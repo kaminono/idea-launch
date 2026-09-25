@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* idea-launch Light-first AI Workspace 设计 Token
+   规则见 docs/05-ui-design-system.md */
+
+@theme inline {
+  /* 背景与表面 */
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-muted-bg: #f1f3f5;
+  --color-accent-soft: #eef0fe;
+
+  /* 文字 */
+  --color-strong: #1a1d21;
+  --color-body: #3d444d;
+  --color-muted: #6b7280;
+  --color-faint: #9aa1ac;
+
+  /* 边框 */
+  --color-subtle: #e6e8ec;
+
+  /* 强调 */
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-violet-accent: #7c3aed;
+
+  /* 状态色 */
+  --color-success: #059669;
+  --color-success-soft: #e7f6f0;
+  --color-warning: #b45309;
+  --color-warning-soft: #fbf1e2;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fdecec;
+
+  /* 圆角 */
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --radius-badge: 8px;
+
+  /* 字体 */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* 浮层阴影：仅浮层与悬浮卡片使用 */
+  --shadow-pop: 0 8px 24px rgba(17, 24, 39, 0.08);
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
+* {
+  border-color: var(--color-subtle);
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-strong);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 快速、克制的进入动效（150–250ms，无弹跳） */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes skeleton-pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-fade-slide-in {
+  animation: fade-slide-in 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.skeleton {
+  background: var(--color-muted-bg);
+  border-radius: var(--radius-badge);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
