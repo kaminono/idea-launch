@@ -73,7 +73,9 @@ idea-launch 是火山引擎 ADG 社区直播演示用的真实可运行 Web Demo
 - 当前已实现节点：
   - Idea Understanding（`POST /api/ai/understand`）；
   - Clarification，拆为两个独立模型动作，禁止合并为一次调用：问题生成 `POST /api/ai/clarify/questions` 与上下文综合 `POST /api/ai/clarify/synthesize`；问题正常 2–4 个、最多 5 个、允许 0 个；0 题时自动走 synthesis。
-  - Product Analysis 及之后节点仅在 docs 中保留规格，不得提前实现。
+  - Product Analysis（`POST /api/ai/analyze/product`）：仅由用户在 Clarified Context 页面手动点击启动，不挂自动 effect；基于 Clarified Context 输出 ProductAnalysisResult（产品定义 / 核心用户 / 核心场景 / 核心问题 / 替代方式 / 价值 / 关键假设 / 风险 / MVP 关注点），完成后刷新直接展示结果且不重新调用模型。
+  - MVP Scoping（`POST /api/ai/scope/mvp`）：仅由用户在 Product Analysis 页面手动点击「开始收敛 MVP」启动，不挂自动 effect；以 Product Analysis 为最主要输入，输出 MvpScopingResult（MVP 定义 / 唯一首要验证假设 / 最小完整用户闭环 / 必须做 / 暂缓做 / 明确不做 / 范围约束 / MVP 风险 / 轻量验证计划 / 范围总结），核心是主动帮独立开发者砍范围；完成后刷新直接展示结果且不重新调用模型。
+  - Execution Planning 及之后节点仅在 docs 中保留规格，不得提前实现。
 - 严格事实边界：`explicitConstraints` / `confirmedDecisions` 只能来自用户原始输入或澄清回答；模型推断必须放入 `remainingAssumptions` 并标注为假设，`remainingUnknowns` 不得编造，不得伪装成用户提供的事实。
 - 自动模型调用由持久化状态派生（effect 触发，`queueMicrotask` 延迟到提交后执行），并用 in-flight ref 防重入；刷新不得重复触发已完成的问题生成 / synthesis，避免重复计费；失败后刷新不自动重试，已填写答案必须保留。
 - 前端不展示模型 Chain of Thought / reasoning 内容。

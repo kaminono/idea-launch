@@ -1,13 +1,14 @@
 "use client";
 
 import {
+  ArrowRight,
   Check,
   Crosshair,
   Flag,
   HelpCircle,
   Lightbulb,
   ListChecks,
-  Lock,
+  Loader2,
   Route,
   Sparkle,
   Target,
@@ -19,12 +20,16 @@ interface ClarificationResultProps {
   context: ClarifiedContext;
   latencyMs: number | null;
   autoCompleted: boolean;
+  onStartAnalysis: () => void;
+  analysisStarting: boolean;
 }
 
 export function ClarificationResult({
   context,
   latencyMs,
   autoCompleted,
+  onStartAnalysis,
+  analysisStarting,
 }: ClarificationResultProps) {
   return (
     <div className="space-y-5">
@@ -127,23 +132,31 @@ export function ClarificationResult({
         </p>
       )}
 
-      {/* 下一阶段入口：本版本不实现 Product Analysis */}
+      {/* 下一阶段入口：由用户主动开始产品分析 */}
       <div className="flex items-center justify-between rounded-[16px] border border-subtle bg-surface px-5 py-4">
         <div>
-          <p className="text-sm font-medium text-strong">产品分析</p>
+          <p className="text-sm font-medium text-strong">开始产品分析</p>
           <p className="mt-0.5 text-xs text-muted">
-            下一阶段将在此基础上完成产品分析。
+            基于已确认的上下文，分析产品是否在解决一个足够明确的问题。
           </p>
         </div>
         <button
           type="button"
-          disabled
-          aria-disabled="true"
-          title="产品分析将在下一阶段开放"
-          className="inline-flex h-10 cursor-not-allowed items-center gap-2 rounded-[12px] border border-subtle bg-muted-bg px-4 text-sm text-faint"
+          onClick={onStartAnalysis}
+          disabled={analysisStarting}
+          className="inline-flex h-10 items-center gap-2 rounded-[12px] bg-accent px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <Lock size={14} />
-          当前版本暂未开放
+          {analysisStarting ? (
+            <>
+              <Loader2 size={14} className="animate-spin" />
+              正在开始
+            </>
+          ) : (
+            <>
+              开始产品分析
+              <ArrowRight size={14} />
+            </>
+          )}
         </button>
       </div>
     </div>

@@ -8,24 +8,35 @@ import {
   CLARIFIED_CONTEXT_JSON_SCHEMA,
   CLARIFICATION_QUESTIONS_JSON_SCHEMA,
   IDEA_UNDERSTANDING_JSON_SCHEMA,
+  MVP_SCOPING_JSON_SCHEMA,
+  PRODUCT_ANALYSIS_JSON_SCHEMA,
   isClarificationQuestions,
   isClarifiedContext,
   isIdeaUnderstanding,
+  isMvpScopingResult,
+  isProductAnalysisResult,
 } from "./schemas";
 import {
   CLARIFICATION_QUESTIONS_SYSTEM_PROMPT,
   CLARIFICATION_SYNTHESIS_SYSTEM_PROMPT,
   IDEA_UNDERSTANDING_SYSTEM_PROMPT,
+  MVP_SCOPING_SYSTEM_PROMPT,
+  PRODUCT_ANALYSIS_SYSTEM_PROMPT,
   buildClarificationQuestionsPrompt,
   buildClarificationSynthesisPrompt,
   buildIdeaUnderstandingUserPrompt,
+  buildMvpScopingPrompt,
+  buildProductAnalysisPrompt,
 } from "./prompts";
 import type {
   ClarificationAnswer,
   ClarificationQuestions,
   ClarificationQuestion,
+  ClarificationState,
   ClarifiedContext,
   IdeaUnderstanding,
+  MvpScopingResult,
+  ProductAnalysisResult,
 } from "@/lib/types";
 
 interface CallParams {
@@ -172,6 +183,173 @@ export async function synthesizeClarification(
     confirmedDecisions: cleanArray(parsed.confirmedDecisions),
     remainingAssumptions: cleanArray(parsed.remainingAssumptions),
     remainingUnknowns: cleanArray(parsed.remainingUnknowns),
+  };
+  return { result, latencyMs: Date.now() - start };
+}
+
+/** Product Analysis 节点 */
+export async function analyzeProduct(
+  params: CallParams & {
+    rawIdea: string;
+    ideaUnderstanding: IdeaUnderstanding;
+    clarification: ClarificationState;
+  }
+): Promise<{ result: ProductAnalysisResult; latencyMs: number }> {
+  const start = Date.now();
+  const text = await callResponses({
+    apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
+    model: params.model,
+    systemPrompt: PRODUCT_ANALYSIS_SYSTEM_PROMPT,
+    userPrompt: buildProductAnalysisPrompt({
+      rawIdea: params.rawIdea,
+      ideaUnderstanding: params.ideaUnderstanding,
+      clarification: params.clarification,
+    }),
+    formatName: "product_analysis",
+    formatDescription:
+      "产品分析结构化结果：产品定义、核心用户与场景、问题分析、替代方式、价值主张、关键假设、风险与 MVP 收敛关注点。",
+    jsonSchema: PRODUCT_ANALYSIS_JSON_SCHEMA,
+  });
+  const parsed = parseJson(text);
+  if (!isProductAnalysisResult(parsed)) {
+    throw new AiError("AI_INVALID_RESPONSE");
+  }
+  const result: ProductAnalysisResult = {
+    ...parsed,
+    productDefinition: {
+      ...parsed.productDefinition,
+      name: parsed.productDefinition.name.trim(),
+      oneLineDefinition: parsed.productDefinition.oneLineDefinition.trim(),
+      category: parsed.productDefinition.category.trim(),
+      stage: parsed.productDefinition.stage.trim(),
+    },
+    primaryUser: {
+      description: parsed.primaryUser.description.trim(),
+      context: parsed.primaryUser.context.trim(),
+      primaryGoal: parsed.primaryUser.primaryGoal.trim(),
+    },
+    coreScenario: {
+      trigger: parsed.coreScenario.trigger.trim(),
+      scenario: parsed.coreScenario.scenario.trim(),
+      desiredOutcome: parsed.coreScenario.desiredOutcome.trim(),
+    },
+    problemAnalysis: {
+      coreProblem: parsed.problemAnalysis.coreProblem.trim(),
+      rootCauses: cleanArray(parsed.problemAnalysis.rootCauses),
+      currentPainPoints: cleanArray(parsed.problemAnalysis.currentPainPoints),
+    },
+    currentAlternatives: parsed.currentAlternatives.map((item) => ({
+      alternative: item.alternative.trim(),
+      whyUsersUseIt: item.whyUsersUseIt.trim(),
+      limitations: cleanArray(item.limitations),
+    })),
+    valueProposition: {
+      coreValue: parsed.valueProposition.coreValue.trim(),
+      userChange: parsed.valueProposition.userChange.trim(),
+      differentiationDirection:
+        parsed.valueProposition.differentiationDirection.trim(),
+    },
+    keyHypotheses: parsed.keyHypotheses.map((item) => ({
+      hypothesis: item.hypothesis.trim(),
+      importance: item.importance,
+      validationNeeded: item.validationNeeded,
+      validationIdea: item.validationIdea.trim(),
+    })),
+    risks: parsed.risks.map((item) => ({
+      risk: item.risk.trim(),
+      type: item.type,
+      severity: item.severity,
+      reason: item.reason.trim(),
+    })),
+    analysisSummary: {
+      strengths: cleanArray(parsed.analysisSummary.strengths),
+      uncertainties: cleanArray(parsed.analysisSummary.uncertainties),
+      mvpFocus: cleanArray(parsed.analysisSummary.mvpFocus),
+      readyForMvpScoping: parsed.analysisSummary.readyForMvpScoping,
+    },
+  };
+  return { result, latencyMs: Date.now() - start };
+}
+
+/** MVP Scoping 节点 */
+export async function scopeMvp(
+  params: CallParams & {
+    rawIdea: string;
+    ideaUnderstanding: IdeaUnderstanding;
+    clarification: ClarificationState;
+    productAnalysis: ProductAnalysisResult;
+  }
+): Promise<{ result: MvpScopingResult; latencyMs: number }> {
+  const start = Date.now();
+  const text = await callResponses({
+    apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
+    model: params.model,
+    systemPrompt: MVP_SCOPING_SYSTEM_PROMPT,
+    userPrompt: buildMvpScopingPrompt({
+      rawIdea: params.rawIdea,
+      ideaUnderstanding: params.ideaUnderstanding,
+      clarification: params.clarification,
+      productAnalysis: params.productAnalysis,
+    }),
+    formatName: "mvp_scoping",
+    formatDescription:
+      "MVP 范围收敛结构化结果：第一版定义、首要验证目标、最小完整闭环、必须做、暂缓做、明确不做、范围约束、MVP 风险、验证计划与范围总结。",
+    jsonSchema: MVP_SCOPING_JSON_SCHEMA,
+  });
+  const parsed = parseJson(text);
+  if (!isMvpScopingResult(parsed)) {
+    throw new AiError("AI_INVALID_RESPONSE");
+  }
+  const result: MvpScopingResult = {
+    mvpDefinition: {
+      goal: parsed.mvpDefinition.goal.trim(),
+      primaryUser: parsed.mvpDefinition.primaryUser.trim(),
+      coreScenario: parsed.mvpDefinition.coreScenario.trim(),
+      coreValue: parsed.mvpDefinition.coreValue.trim(),
+    },
+    validationTarget: {
+      primaryHypothesis: parsed.validationTarget.primaryHypothesis.trim(),
+      whyThisFirst: parsed.validationTarget.whyThisFirst.trim(),
+      successSignal: parsed.validationTarget.successSignal.trim(),
+    },
+    coreLoop: {
+      entry: parsed.coreLoop.entry.trim(),
+      steps: cleanArray(parsed.coreLoop.steps),
+      outcome: parsed.coreLoop.outcome.trim(),
+    },
+    mustHave: parsed.mustHave.map((item) => ({
+      name: item.name.trim(),
+      userNeed: item.userNeed.trim(),
+      reason: item.reason.trim(),
+      acceptance: item.acceptance.trim(),
+    })),
+    shouldDefer: parsed.shouldDefer.map((item) => ({
+      name: item.name.trim(),
+      reason: item.reason.trim(),
+      whenToReconsider: item.whenToReconsider.trim(),
+    })),
+    explicitlyOutOfScope: parsed.explicitlyOutOfScope.map((item) => ({
+      name: item.name.trim(),
+      reason: item.reason.trim(),
+    })),
+    scopeConstraints: cleanArray(parsed.scopeConstraints),
+    mvpRisks: parsed.mvpRisks.map((item) => ({
+      risk: item.risk.trim(),
+      impact: item.impact,
+      response: item.response.trim(),
+    })),
+    validationPlan: parsed.validationPlan.map((item) => ({
+      action: item.action.trim(),
+      signal: item.signal.trim(),
+    })),
+    scopeSummary: {
+      buildNow: cleanArray(parsed.scopeSummary.buildNow),
+      doNotBuildNow: cleanArray(parsed.scopeSummary.doNotBuildNow),
+      readyForExecutionPlanning:
+        parsed.scopeSummary.readyForExecutionPlanning,
+    },
   };
   return { result, latencyMs: Date.now() - start };
 }

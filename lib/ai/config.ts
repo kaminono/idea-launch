@@ -30,5 +30,5 @@ export function getModelOption(model: string): ModelOption {
   );
 }
 
-/** 请求超时（毫秒） */
-export const REQUEST_TIMEOUT_MS = 60_000;
+/** 请求超时（毫秒）：Product Analysis 等大 Schema 节点生成时间更长 */
+export const REQUEST_TIMEOUT_MS = 120_000;

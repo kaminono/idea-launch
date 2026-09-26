@@ -20,10 +20,16 @@ import {
 } from "./clarification-progress";
 import { ClarificationQuestionsFlow } from "./clarification-questions";
 import { ClarificationResult } from "./clarification-result";
+import { ProductAnalysisProgress } from "./product-analysis-progress";
+import { ProductAnalysisResultView } from "./product-analysis-result";
+import { MvpScopingProgress } from "./mvp-scoping-progress";
+import { MvpScopingResultView } from "./mvp-scoping-result";
 import { SettingsModal } from "@/components/settings/settings-modal";
 import {
+  analyzeProduct,
   ClientAiError,
   generateClarificationQuestions,
+  scopeMvp,
   synthesizeClarification,
   understandIdea,
 } from "@/lib/client/api";
@@ -52,7 +58,13 @@ type Phase =
   | "questions"
   | "synthesis-running"
   | "synthesis-error"
-  | "clarified";
+  | "clarified"
+  | "analysis-running"
+  | "analysis-error"
+  | "analyzed"
+  | "mvp-running"
+  | "mvp-error"
+  | "mvp-done";
 
 function toRunError(error: unknown): RunError {
   if (error instanceof ClientAiError) return error.toRunError();
@@ -92,7 +104,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   // 本地瞬时态：仅标记某个模型动作正在进行 / 本会话失败信息。
   // 持久化的 lastRun 保证刷新后不会自动重试，只展示错误并允许手动重试。
   const [localPhase, setLocalPhase] = useState<
-    "questions-running" | "synthesis-running" | null
+    | "questions-running"
+    | "synthesis-running"
+    | "analysis-running"
+    | "mvp-running"
+    | null
   >(null);
   const [retryingUnderstanding, setRetryingUnderstanding] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -328,6 +344,157 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [storedProject, sessionError]
   );
 
+  // ---- Stage 3：Product Analysis（仅用户手动触发，不挂自动 effect）----
+  const runAnalysis = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current) return;
+    const settings = loadSettings();
+    const current = storedProject ?? null;
+    const clarification = current?.clarification;
+    if (
+      !settings.apiKey.trim() ||
+      !current ||
+      !current.ideaUnderstanding ||
+      !clarification ||
+      !clarification.clarifiedContext
+    ) {
+      return;
+    }
+
+    inFlightRef.current = true;
+    setLocalPhase("analysis-running");
+    setSessionError(null);
+    const startedAt = new Date().toISOString();
+
+    try {
+      const { productAnalysis, latencyMs } = await analyzeProduct({
+        settings,
+        rawIdea: current.rawIdea,
+        ideaUnderstanding: current.ideaUnderstanding,
+        clarification,
+      });
+
+      const finishedAt = new Date().toISOString();
+      const saved: Project = {
+        ...current,
+        status: "analyzed",
+        updatedAt: finishedAt,
+        productAnalysis: {
+          result: productAnalysis,
+          completedAt: finishedAt,
+        },
+        lastRun: makeRun(
+          "product_analysis",
+          startedAt,
+          "succeeded",
+          latencyMs,
+          null,
+          finishedAt
+        ),
+      };
+      saveProject(saved);
+    } catch (error) {
+      const runError = toRunError(error);
+      const finishedAt = new Date().toISOString();
+      const failed: Project = {
+        ...current,
+        status: "failed",
+        updatedAt: finishedAt,
+        lastRun: makeRun(
+          "product_analysis",
+          startedAt,
+          "failed",
+          null,
+          runError,
+          finishedAt
+        ),
+      };
+      saveProject(failed);
+      setSessionError(runError.message);
+    } finally {
+      inFlightRef.current = false;
+      setLocalPhase((prev) =>
+        prev === "analysis-running" ? null : prev
+      );
+    }
+  }, [storedProject]);
+
+  // ---- Stage 4：MVP Scoping（仅用户手动触发，不挂自动 effect）----
+  const runMvpScoping = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current) return;
+    const settings = loadSettings();
+    const current = storedProject ?? null;
+    const clarification = current?.clarification;
+    const productAnalysis = current?.productAnalysis?.result;
+    if (
+      !settings.apiKey.trim() ||
+      !current ||
+      !current.ideaUnderstanding ||
+      !clarification ||
+      !clarification.clarifiedContext ||
+      !productAnalysis
+    ) {
+      return;
+    }
+
+    inFlightRef.current = true;
+    setLocalPhase("mvp-running");
+    setSessionError(null);
+    const startedAt = new Date().toISOString();
+
+    try {
+      const { mvpScoping: result, latencyMs } = await scopeMvp({
+        settings,
+        rawIdea: current.rawIdea,
+        ideaUnderstanding: current.ideaUnderstanding,
+        clarification,
+        productAnalysis,
+      });
+
+      const finishedAt = new Date().toISOString();
+      const saved: Project = {
+        ...current,
+        status: "scoped",
+        updatedAt: finishedAt,
+        mvpScoping: {
+          result,
+          completedAt: finishedAt,
+        },
+        lastRun: makeRun(
+          "mvp_scoping",
+          startedAt,
+          "succeeded",
+          latencyMs,
+          null,
+          finishedAt
+        ),
+      };
+      saveProject(saved);
+    } catch (error) {
+      const runError = toRunError(error);
+      const finishedAt = new Date().toISOString();
+      const failed: Project = {
+        ...current,
+        status: "failed",
+        updatedAt: finishedAt,
+        lastRun: makeRun(
+          "mvp_scoping",
+          startedAt,
+          "failed",
+          null,
+          runError,
+          finishedAt
+        ),
+      };
+      saveProject(failed);
+      setSessionError(runError.message);
+    } finally {
+      inFlightRef.current = false;
+      setLocalPhase((prev) =>
+        prev === "mvp-running" ? null : prev
+      );
+    }
+  }, [storedProject]);
+
   // ---- 自动运行（仅外部存储事件驱动）----
   const settings = hydrated ? loadSettings() : null;
   const hasKey = Boolean(settings?.apiKey.trim());
@@ -395,8 +562,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return "understanding-running";
     }
 
-    // 已完成
-    if (clarification?.clarifiedContext) return "clarified";
+    // Stage 4 已完成：刷新后直接展示结果，不再调用模型
+    if (project.mvpScoping) return "mvp-done";
+
+    // Stage 3 已完成：刷新后直接展示结果，不再调用模型
+    if (project.productAnalysis) {
+      if (localPhase === "mvp-running") return "mvp-running";
+      if (last?.stage === "mvp_scoping" && last.status === "failed") {
+        return "mvp-error";
+      }
+      return "analyzed";
+    }
+
+    // Clarified Context 已完成，等待用户手动启动产品分析
+    if (clarification?.clarifiedContext) {
+      if (localPhase === "analysis-running") return "analysis-running";
+      if (last?.stage === "product_analysis" && last.status === "failed") {
+        return "analysis-error";
+      }
+      return "clarified";
+    }
 
     // synthesis 瞬时态（本地）
     if (localPhase === "synthesis-running") return "synthesis-running";
@@ -463,10 +648,28 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const projectName =
     project.ideaUnderstanding?.suggestedName ?? "未命名产品想法";
 
-  const inClarification = phase !== null && phase !== "understanding-running" && phase !== "understanding-error";
-  const navStage: WorkflowStage = inClarification
-    ? "clarification"
-    : "idea_understanding";
+  const navStage: WorkflowStage =
+    phase === "mvp-done" ||
+    phase === "mvp-running" ||
+    phase === "mvp-error"
+      ? "mvp_scoping"
+      : phase === "analyzed" ||
+        phase === "analysis-running" ||
+        phase === "analysis-error"
+        ? "product_analysis"
+        : phase === "understanding-running" || phase === "understanding-error"
+          ? "idea_understanding"
+          : "clarification";
+
+  // 阶段标题
+  const stageHeader =
+    navStage === "mvp_scoping"
+      ? { stage: "Stage 4", title: "MVP 范围收敛" }
+      : navStage === "product_analysis"
+        ? { stage: "Stage 3", title: "产品分析" }
+        : navStage === "clarification"
+          ? { stage: "Stage 2", title: "信息补全" }
+          : { stage: "Stage 1", title: "产品想法" };
 
   const lastError = project.lastRun?.error?.message ?? null;
   const understandingLatency =
@@ -475,6 +678,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       : null;
   const synthesisLatency =
     project.lastRun?.stage === "clarification"
+      ? project.lastRun.durationMs
+      : null;
+  const analysisLatency =
+    project.lastRun?.stage === "product_analysis"
+      ? project.lastRun.durationMs
+      : null;
+  const mvpLatency =
+    project.lastRun?.stage === "mvp_scoping"
       ? project.lastRun.durationMs
       : null;
   const autoCompleted =
@@ -517,14 +728,24 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             {/* 阶段标题 */}
             <div className="mb-6">
               <p className="text-xs font-medium uppercase tracking-wide text-faint">
-                {inClarification ? "Stage 2" : "Stage 1"}
+                {stageHeader.stage}
               </p>
               <h2 className="mt-1 text-xl font-semibold leading-8 text-strong">
-                {inClarification ? "信息补全" : "产品想法"}
+                {stageHeader.title}
               </h2>
               {phase === "questions" && (
                 <p className="mt-1 text-sm text-muted">
                   还有几件会影响产品方向的事情需要确认。
+                </p>
+              )}
+              {phase === "analysis-running" && (
+                <p className="mt-1 text-sm text-muted">
+                  正在分析这个产品是否解决了一个足够明确的问题。
+                </p>
+              )}
+              {phase === "mvp-running" && (
+                <p className="mt-1 text-sm text-muted">
+                  正在收敛第一版产品范围，主动保留最小完整闭环。
                 </p>
               )}
             </div>
@@ -557,15 +778,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               />
             )}
 
-            {!inClarification && project.ideaUnderstanding && (
+            {navStage === "idea_understanding" && project.ideaUnderstanding && (
               <UnderstandingResult
                 result={project.ideaUnderstanding}
                 latencyMs={understandingLatency}
               />
             )}
 
-            {/* ---- Stage 2 ---- */}
-            {inClarification && project.ideaUnderstanding && (
+            {/* ---- Stage 2 / 3：首次理解结果折叠 ---- */}
+            {navStage !== "idea_understanding" && project.ideaUnderstanding && (
               <details
                 open={showUnderstanding}
                 onToggle={(event) =>
@@ -632,6 +853,58 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 context={project.clarification.clarifiedContext}
                 latencyMs={synthesisLatency}
                 autoCompleted={autoCompleted}
+                onStartAnalysis={() => void runAnalysis()}
+                analysisStarting={localPhase === "analysis-running"}
+              />
+            )}
+
+            {/* ---- Stage 3：Product Analysis ---- */}
+            {phase === "analysis-running" && <ProductAnalysisProgress />}
+
+            {phase === "analysis-error" && (
+              <ErrorPanel
+                title="产品分析没有完成"
+                message={
+                  !hasKey
+                    ? "尚未配置 API Key，请点击右上角设置完成配置后重试。"
+                    : sessionError ?? lastError ?? "处理失败，请稍后重试。"
+                }
+                showSettingsAction={!hasKey}
+                onSettings={() => setSettingsOpen(true)}
+                onRetry={() => void runAnalysis()}
+              />
+            )}
+
+            {phase === "analyzed" && project.productAnalysis && (
+              <ProductAnalysisResultView
+                result={project.productAnalysis.result}
+                latencyMs={analysisLatency}
+                onStartMvp={() => void runMvpScoping()}
+                mvpStarting={localPhase === "mvp-running"}
+              />
+            )}
+
+            {/* ---- Stage 4：MVP Scoping ---- */}
+            {phase === "mvp-running" && <MvpScopingProgress />}
+
+            {phase === "mvp-error" && (
+              <ErrorPanel
+                title="MVP 范围没有收敛完成"
+                message={
+                  !hasKey
+                    ? "尚未配置 API Key，请点击右上角设置完成配置后重试。"
+                    : sessionError ?? lastError ?? "处理失败，请稍后重试。"
+                }
+                showSettingsAction={!hasKey}
+                onSettings={() => setSettingsOpen(true)}
+                onRetry={() => void runMvpScoping()}
+              />
+            )}
+
+            {phase === "mvp-done" && project.mvpScoping && (
+              <MvpScopingResultView
+                result={project.mvpScoping.result}
+                latencyMs={mvpLatency}
               />
             )}
           </div>
@@ -692,6 +965,22 @@ function ErrorPanel({
 }
 
 function StatusBadge({ phase }: { phase: Phase | null }) {
+  if (phase === "mvp-done") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-success-soft px-2 py-0.5 text-xs text-success">
+        <CheckCircle2 size={12} />
+        MVP 收敛完成
+      </span>
+    );
+  }
+  if (phase === "analyzed") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-success-soft px-2 py-0.5 text-xs text-success">
+        <CheckCircle2 size={12} />
+        产品分析完成
+      </span>
+    );
+  }
   if (phase === "clarified") {
     return (
       <span className="inline-flex items-center gap-1 rounded-[8px] bg-success-soft px-2 py-0.5 text-xs text-success">
@@ -703,7 +992,9 @@ function StatusBadge({ phase }: { phase: Phase | null }) {
   if (
     phase === "understanding-running" ||
     phase === "questions-running" ||
-    phase === "synthesis-running"
+    phase === "synthesis-running" ||
+    phase === "analysis-running" ||
+    phase === "mvp-running"
   ) {
     return (
       <span className="inline-flex items-center gap-1 rounded-[8px] bg-accent-soft px-2 py-0.5 text-xs text-accent">
@@ -715,7 +1006,9 @@ function StatusBadge({ phase }: { phase: Phase | null }) {
   if (
     phase === "understanding-error" ||
     phase === "questions-error" ||
-    phase === "synthesis-error"
+    phase === "synthesis-error" ||
+    phase === "analysis-error" ||
+    phase === "mvp-error"
   ) {
     return (
       <span className="rounded-[8px] bg-danger-soft px-2 py-0.5 text-xs text-danger">

@@ -67,12 +67,16 @@ type ProjectStatus =
   | "understanding"
   | "understood"
   | "clarified"
+  | "analyzed"
+  | "scoped"
   | "failed";
 ```
 
 - `understanding`：已创建项目，尚无成功理解结果
 - `understood`：Idea Understanding 成功并已保存（Clarification 未完成）
 - `clarified`：Clarification Synthesis 成功，Clarified Context 已保存
+- `analyzed`：Product Analysis 成功，分析结果已保存
+- `scoped`：MVP Scoping 成功，第一版范围已保存
 - `failed`：最近一次运行失败（保留错误，允许重试）
 
 ## 4. Idea Understanding
@@ -159,6 +163,168 @@ interface ClarificationState {
 }
 ```
 
+### 5.4 Product Analysis（产品分析结果）
+
+```ts
+type HypothesisImportance = "high" | "medium" | "low";
+type ProductRiskType =
+  | "user" | "product" | "value" | "adoption" | "business" | "execution";
+type RiskSeverity = "high" | "medium" | "low";
+
+interface ProductDefinition {
+  name: string;
+  oneLineDefinition: string;
+  category: string;            // 普通中文分类
+  stage: string;               // 如「概念验证阶段」
+}
+
+interface PrimaryUser {
+  description: string;         // 第一优先核心用户（分析结论，非用户确认事实）
+  context: string;
+  primaryGoal: string;
+}
+
+interface CoreScenario {
+  trigger: string;
+  scenario: string;
+  desiredOutcome: string;
+}
+
+interface ProblemAnalysis {
+  coreProblem: string;         // 只聚焦一个最主要问题
+  rootCauses: string[];
+  currentPainPoints: string[];
+}
+
+interface CurrentAlternative {
+  alternative: string;
+  whyUsersUseIt: string;
+  limitations: string[];
+}
+
+interface ValueProposition {
+  coreValue: string;
+  userChange: string;
+  differentiationDirection: string; // 仅方向，不声称已形成壁垒
+}
+
+interface KeyHypothesis {
+  hypothesis: string;
+  importance: HypothesisImportance;
+  validationNeeded: boolean;
+  validationIdea: string;      // 轻量验证建议
+}
+
+interface ProductRisk {
+  risk: string;
+  type: ProductRiskType;
+  severity: RiskSeverity;
+  reason: string;
+}
+
+interface AnalysisSummary {
+  strengths: string[];
+  uncertainties: string[];
+  mvpFocus: string[];          // 只列下一阶段关注点，不列 MVP 功能
+  readyForMvpScoping: boolean;
+}
+
+interface ProductAnalysisResult {
+  productDefinition: ProductDefinition;
+  primaryUser: PrimaryUser;
+  coreScenario: CoreScenario;
+  problemAnalysis: ProblemAnalysis;
+  currentAlternatives: CurrentAlternative[];
+  valueProposition: ValueProposition;
+  keyHypotheses: KeyHypothesis[];   // 正常 3～6 个
+  risks: ProductRisk[];             // 正常 3～5 个
+  analysisSummary: AnalysisSummary;
+}
+
+interface ProductAnalysisState {
+  result: ProductAnalysisResult;
+  completedAt: string;              // 分析成功时间
+}
+```
+
+### 5.5 MVP Scoping（MVP 范围收敛结果）
+
+```ts
+type MvpRiskImpact = "high" | "medium" | "low";
+
+interface MvpDefinition {
+  goal: string;                // 一句话：第一版最重要的目标（可验证）
+  primaryUser: string;         // 只保留一个第一优先用户
+  coreScenario: string;        // 第一版最重要的核心场景
+  coreValue: string;           // 第一版实际交付的核心价值
+}
+
+interface ValidationTarget {
+  primaryHypothesis: string;   // 正常只有 1 个首要假设
+  whyThisFirst: string;
+  successSignal: string;       // 可观察行为信号，禁止编造百分比
+}
+
+interface CoreLoop {
+  entry: string;
+  steps: string[];             // 3～6 步，用户视角完整任务闭环
+  outcome: string;
+}
+
+interface MustHaveFeature {
+  name: string;
+  userNeed: string;
+  reason: string;
+  acceptance: string;          // 产品能力描述，不写技术实现
+}
+
+interface ShouldDeferFeature {
+  name: string;
+  reason: string;
+  whenToReconsider: string;
+}
+
+interface OutOfScopeFeature {
+  name: string;
+  reason: string;
+}
+
+interface MvpRisk {
+  risk: string;
+  impact: MvpRiskImpact;
+  response: string;
+}
+
+interface ValidationAction {
+  action: string;
+  signal: string;
+}
+
+interface ScopeSummary {
+  buildNow: string[];
+  doNotBuildNow: string[];
+  readyForExecutionPlanning: boolean;
+}
+
+interface MvpScopingResult {
+  mvpDefinition: MvpDefinition;
+  validationTarget: ValidationTarget;
+  coreLoop: CoreLoop;
+  mustHave: MustHaveFeature[];            // 正常 3～6 个（最多 7）
+  shouldDefer: ShouldDeferFeature[];      // 正常 2～5 个
+  explicitlyOutOfScope: OutOfScopeFeature[]; // 正常 1～5 个
+  scopeConstraints: string[];
+  mvpRisks: MvpRisk[];                    // 正常 2～4 个
+  validationPlan: ValidationAction[];     // 正常 2～4 个
+  scopeSummary: ScopeSummary;
+}
+
+interface MvpScopingState {
+  result: MvpScopingResult;
+  completedAt: string;                    // 收敛成功时间
+}
+```
+
 ## 6. Analysis Run（运行记录）
 
 每次调用 AI 节点产生一条运行记录，用于表达当前工作区状态与错误：
@@ -168,7 +334,7 @@ type RunStatus = "running" | "succeeded" | "failed";
 
 interface AnalysisRun {
   id: string;                 // UUID
-  stage: WorkflowStage;       // "idea_understanding" 或 "clarification"
+  stage: WorkflowStage;       // "idea_understanding" / "clarification" / "product_analysis" / "mvp_scoping"
   status: RunStatus;
   startedAt: string;          // ISO 时间
   finishedAt: string | null;  // ISO 时间
@@ -197,7 +363,9 @@ interface Project {
   rawIdea: string;             // 用户原始想法
   status: ProjectStatus;
   ideaUnderstanding: IdeaUnderstanding | null;
-  clarification?: ClarificationState; // V1 第二阶段新增，旧项目缺省 undefined
+  clarification?: ClarificationState;   // V1 第二阶段新增，旧项目缺省 undefined
+  productAnalysis?: ProductAnalysisState; // V1 第三阶段新增，旧项目缺省 undefined
+  mvpScoping?: MvpScopingState;         // V1 第四阶段新增，旧项目缺省 undefined
   lastRun: AnalysisRun | null; // 最近一次运行（含失败信息）
 }
 ```
@@ -207,13 +375,17 @@ interface Project {
 - Project 中**禁止出现 API Key**
 - Idea Understanding 成功后写入 `ideaUnderstanding`、`status = "understood"`
 - Clarification Synthesis 成功后写入 `clarification.clarifiedContext`、`status = "clarified"`
+- Product Analysis 成功后写入 `productAnalysis`、`status = "analyzed"`
+- MVP Scoping 成功后写入 `mvpScoping`、`status = "scoped"`
 - ID 使用稳定 UUID（`crypto.randomUUID()`）
 
-### 7.1 旧数据兼容策略（第二阶段）
+### 7.1 旧数据兼容策略（第二、三、四阶段）
 
 - localStorage namespace 与 envelope 版本均保持不变（`idea-launch:projects:v1`、`version: 1`）
 - `clarification` 为可选字段：存储层运行时守卫接受 `undefined`，旧项目按「信息补全未开始」处理，打开时自动继续
-- 不删除、不重命名第一阶段已有字段；不清空、不迁移现有项目数据
+- `productAnalysis` 同为可选字段：守卫接受 `undefined`，旧项目按「产品分析未开始」处理；Clarified Context 已存在的旧项目打开后可手动开始分析
+- `mvpScoping` 同为可选字段：守卫接受 `undefined`，旧项目按「MVP 未开始」处理；Product Analysis 已存在的旧项目打开后可手动开始收敛
+- 不删除、不重命名已有字段；不清空、不迁移现有项目数据
 
 ## 8. API 请求 / 响应契约
 
@@ -321,6 +493,59 @@ interface ClarifySynthesisResult {
 
 任一问题缺少有效答案时返回 `AI_BAD_REQUEST`（「还有问题没有回答，请补充后再提交。」）；空 `questions`（0 题自动路径）合法。
 
+### 8.5 产品分析 `POST /api/ai/analyze/product`
+
+请求：
+
+```ts
+interface ProductAnalysisRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState; // clarifiedContext 必须非 null
+}
+```
+
+成功响应 `data`：
+
+```ts
+interface ProductAnalysisResultResponse {
+  productAnalysis: ProductAnalysisResult;
+  latencyMs: number;
+}
+```
+
+`clarification.clarifiedContext` 为 `null` 时返回 `AI_BAD_REQUEST`（「缺少已确认的 Clarified Context，无法进行产品分析。」）。
+
+### 8.6 MVP 范围收敛 `POST /api/ai/scope/mvp`
+
+请求：
+
+```ts
+interface MvpScopingRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;      // clarifiedContext 必须非 null
+  productAnalysis: ProductAnalysisResult; // 最主要输入，必须存在
+}
+```
+
+成功响应 `data`：
+
+```ts
+interface MvpScopingResultResponse {
+  mvpScoping: MvpScopingResult;
+  latencyMs: number;
+}
+```
+
+`clarification.clarifiedContext` 为 `null` 或 `productAnalysis` 缺失时返回 `AI_BAD_REQUEST`。
+
 ## 9. 错误码
 
 ```ts
@@ -337,7 +562,7 @@ type AiErrorCode =
 
 ## 10. 后续工作流预留边界
 
-后续节点（Product Analysis / MVP / Execution / Final）新增字段时：
+后续节点（Execution / Final）新增字段时：
 
 1. 优先以 `Project` 上新增可选字段的方式扩展（Clarification 即按此策略落地为 `clarification?: ClarificationState`）
 2. 不删除、不重命名 V1 已有字段

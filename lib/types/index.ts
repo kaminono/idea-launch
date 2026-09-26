@@ -15,6 +15,8 @@ export type ProjectStatus =
   | "understanding"
   | "understood"
   | "clarified"
+  | "analyzed"
+  | "scoped"
   | "failed";
 
 /** AI 运行状态 */
@@ -121,6 +123,197 @@ export interface ClarificationState {
   completedAt: string | null;
 }
 
+// ---- Product Analysis（产品分析）----
+
+/** 关键假设的重要程度 */
+export type HypothesisImportance = "high" | "medium" | "low";
+
+/** 产品风险类型 */
+export type ProductRiskType =
+  | "user"
+  | "product"
+  | "value"
+  | "adoption"
+  | "business"
+  | "execution";
+
+/** 产品风险严重程度 */
+export type RiskSeverity = "high" | "medium" | "low";
+
+/** 收敛后的产品定义 */
+export interface ProductDefinition {
+  name: string;
+  oneLineDefinition: string;
+  category: string;
+  stage: string;
+}
+
+/** 第一优先核心用户 */
+export interface PrimaryUser {
+  description: string;
+  context: string;
+  primaryGoal: string;
+}
+
+/** 核心使用场景 */
+export interface CoreScenario {
+  trigger: string;
+  scenario: string;
+  desiredOutcome: string;
+}
+
+/** 核心问题分析 */
+export interface ProblemAnalysis {
+  coreProblem: string;
+  rootCauses: string[];
+  currentPainPoints: string[];
+}
+
+/** 用户当前替代方式 */
+export interface CurrentAlternative {
+  alternative: string;
+  whyUsersUseIt: string;
+  limitations: string[];
+}
+
+/** 产品价值主张 */
+export interface ValueProposition {
+  coreValue: string;
+  userChange: string;
+  differentiationDirection: string;
+}
+
+/** 关键产品假设 */
+export interface KeyHypothesis {
+  hypothesis: string;
+  importance: HypothesisImportance;
+  validationNeeded: boolean;
+  validationIdea: string;
+}
+
+/** 产品风险 */
+export interface ProductRisk {
+  risk: string;
+  type: ProductRiskType;
+  severity: RiskSeverity;
+  reason: string;
+}
+
+/** 产品分析收敛总结 */
+export interface AnalysisSummary {
+  strengths: string[];
+  uncertainties: string[];
+  mvpFocus: string[];
+  readyForMvpScoping: boolean;
+}
+
+/** Product Analysis 结构化结果 */
+export interface ProductAnalysisResult {
+  productDefinition: ProductDefinition;
+  primaryUser: PrimaryUser;
+  coreScenario: CoreScenario;
+  problemAnalysis: ProblemAnalysis;
+  currentAlternatives: CurrentAlternative[];
+  valueProposition: ValueProposition;
+  keyHypotheses: KeyHypothesis[];
+  risks: ProductRisk[];
+  analysisSummary: AnalysisSummary;
+}
+
+/** Project 上的产品分析状态（旧项目缺省为 undefined） */
+export interface ProductAnalysisState {
+  result: ProductAnalysisResult;
+  completedAt: string;
+}
+
+// ---- MVP Scoping（MVP 范围收敛）----
+
+/** MVP 风险的影响程度 */
+export type MvpRiskImpact = "high" | "medium" | "low";
+
+/** MVP 定义：第一版最重要的目标与边界 */
+export interface MvpDefinition {
+  goal: string;
+  primaryUser: string;
+  coreScenario: string;
+  coreValue: string;
+}
+
+/** 第一版的验证目标 */
+export interface ValidationTarget {
+  primaryHypothesis: string;
+  whyThisFirst: string;
+  successSignal: string;
+}
+
+/** 最小完整用户闭环 */
+export interface CoreLoop {
+  entry: string;
+  steps: string[];
+  outcome: string;
+}
+
+/** 第一版必须完成的能力 */
+export interface MustHaveFeature {
+  name: string;
+  userNeed: string;
+  reason: string;
+  acceptance: string;
+}
+
+/** 暂缓开发、但未来可能有价值的能力 */
+export interface ShouldDeferFeature {
+  name: string;
+  reason: string;
+  whenToReconsider: string;
+}
+
+/** 当前产品方向明确排除的能力 */
+export interface OutOfScopeFeature {
+  name: string;
+  reason: string;
+}
+
+/** MVP 实施与验证阶段的风险 */
+export interface MvpRisk {
+  risk: string;
+  impact: MvpRiskImpact;
+  response: string;
+}
+
+/** MVP 上线后的轻量验证动作 */
+export interface ValidationAction {
+  action: string;
+  signal: string;
+}
+
+/** 范围收敛总结：现在做什么 / 不做什么 */
+export interface ScopeSummary {
+  buildNow: string[];
+  doNotBuildNow: string[];
+  readyForExecutionPlanning: boolean;
+}
+
+/** MVP Scoping 结构化结果 */
+export interface MvpScopingResult {
+  mvpDefinition: MvpDefinition;
+  validationTarget: ValidationTarget;
+  coreLoop: CoreLoop;
+  mustHave: MustHaveFeature[];
+  shouldDefer: ShouldDeferFeature[];
+  explicitlyOutOfScope: OutOfScopeFeature[];
+  scopeConstraints: string[];
+  mvpRisks: MvpRisk[];
+  validationPlan: ValidationAction[];
+  scopeSummary: ScopeSummary;
+}
+
+/** Project 上的 MVP 范围收敛状态（旧项目缺省为 undefined） */
+export interface MvpScopingState {
+  result: MvpScopingResult;
+  completedAt: string;
+}
+
 /** 运行错误（用户可读、已脱敏） */
 export interface RunError {
   code: AiErrorCode;
@@ -148,6 +341,10 @@ export interface Project {
   ideaUnderstanding: IdeaUnderstanding | null;
   /** V1 第二阶段新增：旧项目缺省为 undefined，读取时按未开始处理 */
   clarification?: ClarificationState;
+  /** V1 第三阶段新增：Product Analysis 完成后写入，旧项目缺省为 undefined */
+  productAnalysis?: ProductAnalysisState;
+  /** V1 第四阶段新增：MVP Scoping 完成后写入，旧项目缺省为 undefined */
+  mvpScoping?: MvpScopingState;
   lastRun: AnalysisRun | null;
 }
 
@@ -207,6 +404,35 @@ export interface ClarifySynthesisRequest {
 
 export interface ClarifySynthesisResult {
   clarifiedContext: ClarifiedContext;
+  latencyMs: number;
+}
+
+export interface ProductAnalysisRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+}
+
+export interface ProductAnalysisResultResponse {
+  productAnalysis: ProductAnalysisResult;
+  latencyMs: number;
+}
+
+export interface MvpScopingRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+}
+
+export interface MvpScopingResultResponse {
+  mvpScoping: MvpScopingResult;
   latencyMs: number;
 }
 

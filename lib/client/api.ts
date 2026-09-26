@@ -4,9 +4,12 @@
 import type {
   ClarificationAnswer,
   ClarificationQuestions,
+  ClarificationState,
   ClarificationQuestion,
   ClarifiedContext,
   IdeaUnderstanding,
+  MvpScopingResult,
+  ProductAnalysisResult,
   RunError,
   Settings,
   TestConnectionResult,
@@ -104,6 +107,46 @@ export function synthesizeClarification(args: {
       answers: args.answers,
     }
   );
+}
+
+export function analyzeProduct(args: {
+  settings: Settings;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+}): Promise<{ productAnalysis: ProductAnalysisResult; latencyMs: number }> {
+  return postJson<{
+    productAnalysis: ProductAnalysisResult;
+    latencyMs: number;
+  }>("/api/ai/analyze/product", {
+    apiKey: args.settings.apiKey,
+    baseUrl: args.settings.baseUrl,
+    model: args.settings.model,
+    rawIdea: args.rawIdea,
+    ideaUnderstanding: args.ideaUnderstanding,
+    clarification: args.clarification,
+  });
+}
+
+export function scopeMvp(args: {
+  settings: Settings;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+}): Promise<{ mvpScoping: MvpScopingResult; latencyMs: number }> {
+  return postJson<{
+    mvpScoping: MvpScopingResult;
+    latencyMs: number;
+  }>("/api/ai/scope/mvp", {
+    apiKey: args.settings.apiKey,
+    baseUrl: args.settings.baseUrl,
+    model: args.settings.model,
+    rawIdea: args.rawIdea,
+    ideaUnderstanding: args.ideaUnderstanding,
+    clarification: args.clarification,
+    productAnalysis: args.productAnalysis,
+  });
 }
 
 export class ClientAiError extends Error {

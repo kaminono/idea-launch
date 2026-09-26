@@ -1,6 +1,6 @@
 # 03 · AI Workflow
 
-> 定义 idea-launch 的 AI 工作流契约。**当前实现节点 1 Idea Understanding 与节点 2 Clarification（拆为 Question Generation / Synthesis 两个模型动作）。**
+> 定义 idea-launch 的 AI 工作流契约。**当前实现节点 1 Idea Understanding、节点 2 Clarification（拆为 Question Generation / Synthesis 两个模型动作）、节点 3 Product Analysis 与节点 4 MVP Scoping。**
 
 ## 1. 设计原则
 
@@ -17,8 +17,8 @@
 |---|---|---|---|---|
 | 1 | 产品想法理解 | `idea_understanding` | `rawIdea`（原始想法文本） | IdeaUnderstanding |
 | 2 | 信息补全 | `clarification` | IdeaUnderstanding + 用户回答（拆为 Question Generation / Synthesis 两个模型动作） | ClarificationQuestions → ClarifiedContext |
-| 3 | 产品分析 | `product_analysis` | 节点 1+2 产物 | 用户/场景/价值分析 |
-| 4 | MVP 范围收敛 | `mvp_scoping` | 节点 1–3 产物 | MVP 功能边界 |
+| 3 | 产品分析 | `product_analysis` | `rawIdea` + IdeaUnderstanding + ClarificationState（Clarified Context 为主要输入） | ProductAnalysisResult（已实现，手动触发） |
+| 4 | MVP 范围收敛 | `mvp_scoping` | Product Analysis（主要输入）+ Clarified Context + Idea Understanding + rawIdea | MvpScopingResult（已实现，手动触发） |
 | 5 | 执行方案规划 | `execution_planning` | 节点 1–4 产物 | 技术路径 + 任务拆解 |
 | 6 | 最终复核 | `final_review` | 全部上游产物 | 最终立项方案 |
 
@@ -132,21 +132,200 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 - 运行时清洗：丢弃空问题 / 空选项、问题数截断为最多 5 个；`clarificationNeeded = true` 却无有效问题时按非法输出处理
 - Synthesis 路由逐题校验答案完整性（0 题路径合法）；失败允许重试，已填答案不丢失
 
-## 5. 后续节点边界（仅预留，不实现）
+## 5. 节点 3：Product Analysis（已实现）
 
-### 5.1 Product Analysis
+### 5.1 目标与触发
 
-- 输出：`{ personas: [], scenarios: [], valuePropositions: [], differentiation: [] }`
+- 目标：基于已确认的 Clarified Context 做系统产品分析——服务谁、在什么场景下、遇到什么问题、现在如何解决、核心价值、关键假设、主要风险、MVP 收敛应关注什么
+- 触发：**仅由用户在 Clarified Context 页面手动点击启动**，不挂自动 effect；因此完成后刷新直接显示结果、绝不重新调用模型，避免重复计费
+- 本节点不重新执行 Clarification、不再次提问、不生成 MVP / 页面 / 技术架构 / 开发计划 / PRD
 
-### 5.2 MVP Scoping
+### 5.2 输入
 
-- 输出：`{ inScope: [], outOfScope: [], successCriteria: [], keyMetrics: [] }`
+```ts
+{
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState; // 必须含 questions / answers / clarifiedContext
+}
+```
 
-### 5.3 Execution Planning
+- Clarified Context 是主要输入；与早期 Idea Understanding 冲突时，以用户澄清后确认的信息为准
+- Route Handler 强制校验 `clarification.clarifiedContext` 非空，缺失时返回 `AI_BAD_REQUEST`
+
+### 5.3 事实边界（Prompt 最高优先级）
+
+- 逐字段区分：Confirmed Facts / Analysis / Hypotheses / Unknowns
+- 禁止把模型分析写成已验证市场事实；禁止编造市场规模、用户数量、竞品收入、转化率、付费率、增长率与行业统计（本节点无 Web Search / RAG）
+- `currentAlternatives` 只分析用户当前可能采用的解决方式，不做竞品研究；`differentiationDirection` 只描述方向，不声称已有壁垒
+- `keyHypotheses` 3～6 个，`validationNeeded: true` 并给出轻量 `validationIdea`；`risks` 3～5 个；`readyForMvpScoping` 正常为 `true`，需非常克制地使用 `false`
+
+### 5.4 结构化输出 Schema
+
+```json
+{
+  "productDefinition": {
+    "name": "string",
+    "oneLineDefinition": "string",
+    "category": "string —— 普通中文分类，如 AI 效率工具",
+    "stage": "string —— 如 概念验证阶段"
+  },
+  "primaryUser": {
+    "description": "string —— 第一优先核心用户（属分析结论）",
+    "context": "string",
+    "primaryGoal": "string"
+  },
+  "coreScenario": {
+    "trigger": "string",
+    "scenario": "string",
+    "desiredOutcome": "string"
+  },
+  "problemAnalysis": {
+    "coreProblem": "string —— 聚焦一个最主要问题",
+    "rootCauses": ["string"],
+    "currentPainPoints": ["string"]
+  },
+  "currentAlternatives": [
+    {
+      "alternative": "string",
+      "whyUsersUseIt": "string",
+      "limitations": ["string"]
+    }
+  ],
+  "valueProposition": {
+    "coreValue": "string",
+    "userChange": "string",
+    "differentiationDirection": "string"
+  },
+  "keyHypotheses": [
+    {
+      "hypothesis": "string",
+      "importance": "high | medium | low",
+      "validationNeeded": true,
+      "validationIdea": "string"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "string",
+      "type": "user | product | value | adoption | business | execution",
+      "severity": "high | medium | low",
+      "reason": "string"
+    }
+  ],
+  "analysisSummary": {
+    "strengths": ["string"],
+    "uncertainties": ["string"],
+    "mvpFocus": ["string —— 只说明关注点，不列 MVP 功能"],
+    "readyForMvpScoping": true
+  }
+}
+```
+
+### 5.5 调用与校验
+
+- 端点：`POST /api/ai/analyze/product`
+- 继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；复用现有 AI Client，不新建第二套客户端
+- 运行时清洗：字符串字段 trim、空项丢弃、枚举值原样保留；守卫校验失败抛出 `AI_INVALID_RESPONSE`
+- 失败时只写 `lastRun`（stage `product_analysis`、failed），不动 `clarification` 与已有 `productAnalysis`，前序数据不丢失，可手动重试
+
+## 6. 节点 4：MVP Scoping（已实现）
+
+### 6.1 目标与触发
+
+- 目标：在产品分析之上收敛第一版范围——第一版验证什么、必须完成哪些能力、哪些暂缓 / 明确不做、最小完整用户闭环、范围约束、MVP 风险与轻量验证计划
+- 触发：**仅由用户在 Product Analysis 页面手动点击「开始收敛 MVP」启动**，不挂任何自动 effect；完成后刷新直接显示结果、绝不重新调用模型
+- 本节点不重新执行产品分析、不再次提问、不写代码 / 数据库 / API / 技术架构、不输出 Sprint / 开发任务 / PRD / 高保真设计 / 商业与运营方案
+
+### 6.2 输入
+
+```ts
+{
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState; // 必须含 clarifiedContext
+  productAnalysis: ProductAnalysisResult; // 最主要输入
+}
+```
+
+- Product Analysis 是最主要依据；仅在核对事实时读取 Clarified Context、Idea Understanding 与 rawIdea
+- Route Handler 强制校验 `clarification.clarifiedContext` 与 `productAnalysis` 非空，缺失时返回 `AI_BAD_REQUEST`
+
+### 6.3 事实边界（Prompt 强制约束）
+
+- 区分 Confirmed Context（用户已确认约束）/ Product Analysis（上一阶段分析）/ MVP Decision（本阶段范围决策）/ Hypothesis（仍需验证）
+- MVP 设计决策不得描述成市场事实；模型额外建议的范围约束必须以「范围建议：」前缀表达，不能混成用户事实
+- 禁止编造百分比指标；无明确开发周期时不自行承诺精确周期
+
+### 6.4 结构化输出 Schema
+
+```json
+{
+  "mvpDefinition": {
+    "goal": "string —— 一句话说明第一版最重要的目标（可验证，非宏大愿景）",
+    "primaryUser": "string —— 只保留一个第一优先用户",
+    "coreScenario": "string —— 只保留第一版最重要的核心场景",
+    "coreValue": "string —— 第一版实际交付的核心价值"
+  },
+  "validationTarget": {
+    "primaryHypothesis": "string —— 正常只有 1 个首要假设",
+    "whyThisFirst": "string",
+    "successSignal": "string —— 可观察的行为信号，禁止编造百分比"
+  },
+  "coreLoop": {
+    "entry": "string",
+    "steps": ["string —— 3～6 步，用户视角完整任务闭环"],
+    "outcome": "string"
+  },
+  "mustHave": [
+    {
+      "name": "string",
+      "userNeed": "string",
+      "reason": "string",
+      "acceptance": "string —— 产品能力描述，不写技术实现"
+    }
+  ],
+  "shouldDefer": [
+    { "name": "string", "reason": "string", "whenToReconsider": "string" }
+  ],
+  "explicitlyOutOfScope": [
+    { "name": "string", "reason": "string" }
+  ],
+  "scopeConstraints": ["string —— 优先来自用户确认；建议须加「范围建议：」"],
+  "mvpRisks": [
+    {
+      "risk": "string",
+      "impact": "high | medium | low",
+      "response": "string"
+    }
+  ],
+  "validationPlan": [
+    { "action": "string", "signal": "string" }
+  ],
+  "scopeSummary": {
+    "buildNow": ["string"],
+    "doNotBuildNow": ["string"],
+    "readyForExecutionPlanning": true
+  }
+}
+```
+
+数量边界：`mustHave` 3～6（最多 7）、`shouldDefer` 2～5、`explicitlyOutOfScope` 1～5、`mvpRisks` 2～4、`validationPlan` 2～4。
+
+### 6.5 调用与校验
+
+- 端点：`POST /api/ai/scope/mvp`
+- 继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；复用现有 AI Client（`scopeMvp()`），不新建第二套客户端
+- 运行时清洗：字符串字段 trim、空项丢弃、枚举值原样保留；守卫 `isMvpScopingResult` 校验失败抛出 `AI_INVALID_RESPONSE`
+- 失败时只写 `lastRun`（stage `mvp_scoping`、failed），不动前三阶段产物，可手动重试
+
+## 7. 后续节点边界（仅预留，不实现）
+
+### 7.1 Execution Planning
 
 - 输出：`{ techStackRecommendation: [], risks: [], milestones: [], tasks: [{id, title, description, phase}] }`
 
-### 5.4 Final Review
+### 7.2 Final Review
 
 - 输出：汇总全部工件的立项方案（支持 Markdown 导出，后续实现）
 

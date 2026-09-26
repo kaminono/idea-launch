@@ -5,6 +5,8 @@ import {
   isClarificationQuestions,
   isClarifiedContext,
   isIdeaUnderstanding,
+  isMvpScopingResult,
+  isProductAnalysisResult,
 } from "@/lib/ai/schemas";
 import type {
   AnalysisRun,
@@ -21,6 +23,8 @@ const PROJECT_STATUSES: readonly ProjectStatus[] = [
   "understanding",
   "understood",
   "clarified",
+  "analyzed",
+  "scoped",
   "failed",
 ];
 
@@ -80,6 +84,30 @@ function isClarificationState(
   );
 }
 
+/** 校验产品分析状态；第三阶段前的旧项目没有该字段（undefined 视为合法缺省） */
+function isProductAnalysisState(
+  value: unknown
+): value is NonNullable<Project["productAnalysis"]> {
+  if (typeof value !== "object" || value === null) return false;
+  const state = value as Record<string, unknown>;
+  return (
+    isProductAnalysisResult(state.result) &&
+    typeof state.completedAt === "string"
+  );
+}
+
+/** 校验 MVP Scoping 状态；第四阶段前的旧项目没有该字段（undefined 视为合法缺省） */
+function isMvpScopingState(
+  value: unknown
+): value is NonNullable<Project["mvpScoping"]> {
+  if (typeof value !== "object" || value === null) return false;
+  const state = value as Record<string, unknown>;
+  return (
+    isMvpScopingResult(state.result) &&
+    typeof state.completedAt === "string"
+  );
+}
+
 function isProject(value: unknown): value is Project {
   if (typeof value !== "object" || value === null) return false;
   const project = value as Record<string, unknown>;
@@ -93,6 +121,10 @@ function isProject(value: unknown): value is Project {
       isIdeaUnderstanding(project.ideaUnderstanding)) &&
     (project.clarification === undefined ||
       isClarificationState(project.clarification)) &&
+    (project.productAnalysis === undefined ||
+      isProductAnalysisState(project.productAnalysis)) &&
+    (project.mvpScoping === undefined ||
+      isMvpScopingState(project.mvpScoping)) &&
     (project.lastRun === null || isAnalysisRun(project.lastRun))
   );
 }
