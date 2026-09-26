@@ -1,5 +1,6 @@
 // 浏览器端调用本项目 Route Handler 的统一入口。
 // 组件不直接 fetch，也不直接请求第三方模型服务。
+// 所有动作统一携带 modelConfig（API Key 仅随本次请求发送）。
 
 import type {
   ClarificationAnswer,
@@ -10,10 +11,10 @@ import type {
   ExecutionPlanningResult,
   FinalReviewResult,
   IdeaUnderstanding,
+  ModelConfig,
   MvpScopingResult,
   ProductAnalysisResult,
   RunError,
-  Settings,
   TestConnectionResult,
   UnderstandResult,
 } from "@/lib/types";
@@ -31,7 +32,7 @@ async function postJson<T>(
     });
   } catch {
     throw new ClientAiError({
-      code: "AI_NETWORK_ERROR",
+      code: "PROVIDER_UNAVAILABLE",
       message: "无法连接本地服务，请确认开发服务器正在运行后重试。",
     });
   }
@@ -50,48 +51,37 @@ async function postJson<T>(
     return payload.data;
   }
   throw new ClientAiError({
-    code: "AI_PROVIDER_ERROR",
+    code: "PROVIDER_UNAVAILABLE",
     message: "服务暂时不可用，请稍后重试。",
   });
 }
 
 export function testConnection(
-  settings: Settings
+  modelConfig: ModelConfig
 ): Promise<TestConnectionResult> {
-  return postJson<TestConnectionResult>("/api/ai/test", settings);
+  return postJson<TestConnectionResult>("/api/ai/test", { modelConfig });
 }
 
 export function understandIdea(args: {
-  settings: Settings;
+  modelConfig: ModelConfig;
   rawIdea: string;
 }): Promise<UnderstandResult> {
-  return postJson<UnderstandResult>("/api/ai/understand", {
-    apiKey: args.settings.apiKey,
-    baseUrl: args.settings.baseUrl,
-    model: args.settings.model,
-    rawIdea: args.rawIdea,
-  });
+  return postJson<UnderstandResult>("/api/ai/understand", args);
 }
 
 export function generateClarificationQuestions(args: {
-  settings: Settings;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
 }): Promise<{ questions: ClarificationQuestions; latencyMs: number }> {
   return postJson<{ questions: ClarificationQuestions; latencyMs: number }>(
     "/api/ai/clarify/questions",
-    {
-      apiKey: args.settings.apiKey,
-      baseUrl: args.settings.baseUrl,
-      model: args.settings.model,
-      rawIdea: args.rawIdea,
-      ideaUnderstanding: args.ideaUnderstanding,
-    }
+    args
   );
 }
 
 export function synthesizeClarification(args: {
-  settings: Settings;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   questions: ClarificationQuestion[];
@@ -99,20 +89,12 @@ export function synthesizeClarification(args: {
 }): Promise<{ clarifiedContext: ClarifiedContext; latencyMs: number }> {
   return postJson<{ clarifiedContext: ClarifiedContext; latencyMs: number }>(
     "/api/ai/clarify/synthesize",
-    {
-      apiKey: args.settings.apiKey,
-      baseUrl: args.settings.baseUrl,
-      model: args.settings.model,
-      rawIdea: args.rawIdea,
-      ideaUnderstanding: args.ideaUnderstanding,
-      questions: args.questions,
-      answers: args.answers,
-    }
+    args
   );
 }
 
 export function analyzeProduct(args: {
-  settings: Settings;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;
@@ -120,18 +102,11 @@ export function analyzeProduct(args: {
   return postJson<{
     productAnalysis: ProductAnalysisResult;
     latencyMs: number;
-  }>("/api/ai/analyze/product", {
-    apiKey: args.settings.apiKey,
-    baseUrl: args.settings.baseUrl,
-    model: args.settings.model,
-    rawIdea: args.rawIdea,
-    ideaUnderstanding: args.ideaUnderstanding,
-    clarification: args.clarification,
-  });
+  }>("/api/ai/analyze/product", args);
 }
 
 export function scopeMvp(args: {
-  settings: Settings;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;
@@ -140,19 +115,11 @@ export function scopeMvp(args: {
   return postJson<{
     mvpScoping: MvpScopingResult;
     latencyMs: number;
-  }>("/api/ai/scope/mvp", {
-    apiKey: args.settings.apiKey,
-    baseUrl: args.settings.baseUrl,
-    model: args.settings.model,
-    rawIdea: args.rawIdea,
-    ideaUnderstanding: args.ideaUnderstanding,
-    clarification: args.clarification,
-    productAnalysis: args.productAnalysis,
-  });
+  }>("/api/ai/scope/mvp", args);
 }
 
 export function planExecution(args: {
-  settings: Settings;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;
@@ -162,20 +129,11 @@ export function planExecution(args: {
   return postJson<{
     executionPlanning: ExecutionPlanningResult;
     latencyMs: number;
-  }>("/api/ai/plan/execution", {
-    apiKey: args.settings.apiKey,
-    baseUrl: args.settings.baseUrl,
-    model: args.settings.model,
-    rawIdea: args.rawIdea,
-    ideaUnderstanding: args.ideaUnderstanding,
-    clarification: args.clarification,
-    productAnalysis: args.productAnalysis,
-    mvpScoping: args.mvpScoping,
-  });
+  }>("/api/ai/plan/execution", args);
 }
 
 export function reviewFinal(args: {
-  settings: Settings;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;
@@ -186,17 +144,7 @@ export function reviewFinal(args: {
   return postJson<{
     finalReview: FinalReviewResult;
     latencyMs: number;
-  }>("/api/ai/review/final", {
-    apiKey: args.settings.apiKey,
-    baseUrl: args.settings.baseUrl,
-    model: args.settings.model,
-    rawIdea: args.rawIdea,
-    ideaUnderstanding: args.ideaUnderstanding,
-    clarification: args.clarification,
-    productAnalysis: args.productAnalysis,
-    mvpScoping: args.mvpScoping,
-    executionPlanning: args.executionPlanning,
-  });
+  }>("/api/ai/review/final", args);
 }
 
 export class ClientAiError extends Error {

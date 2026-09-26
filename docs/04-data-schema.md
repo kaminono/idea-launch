@@ -4,22 +4,100 @@
 
 ## 1. 存储概览
 
-V1 使用 `localStorage`，集中封装于 `lib/storage/`，不允许在组件中直接读写。
+业务数据使用 `localStorage`，集中封装于 `lib/storage/`，不允许在组件中直接读写。
 
-| Key | 内容 |
-|---|---|
-| `idea-launch:settings:v1` | 用户设置（API Key / Base URL / Model） |
-| `idea-launch:projects:v1` | 全部本地项目 |
+| Key | 内容 | 状态 |
+|---|---|---|
+| `idea-launch:settings:v2` | 用户设置 V2（多 Provider 配置 + 当前激活 Provider） | 当前版本 |
+| `idea-launch:settings:v1` | 旧版单模型设置（API Key / Base URL / Model） | 迁移来源；迁移后保留不删除 |
+| `idea-launch:projects:v1` | 全部本地项目 | 不变 |
 
 版本策略：
 
-- Key 后缀 `:v1` 即数据版本
-- 存储内容包含 `version` 字段；版本不匹配或 JSON 损坏时，备份原始值并安全重置为默认值
-- SSR 环境无 localStorage：所有读写仅发生在客户端，首屏需要默认值兜底
+- Key 后缀即数据版本（Settings V2 为 `:v2`，Projects 仍为 `:v1`）
+- 存储内容包含 `version` 字段；版本不匹配或 JSON 损坏时，隔离损坏数据并安全重置为默认值，不让页面崩溃
+- SSR 环境无 localStorage：所有读写仅发生在客户端，首屏返回 `null` 并以默认值兜底
 
-## 2. Settings
+## 2. Settings V2（多 Provider）
 
-存储形态：
+类型定义于 `lib/ai/providers/types.ts`，存储封装于 `lib/storage/settings-v2.ts`。
+
+### 2.1 存储形态
+
+```ts
+interface SettingsV2Envelope {
+  version: 2;
+  data: SettingsV2;
+}
+
+interface SettingsV2 {
+  activeProviderId: ProviderId;                               // 当前激活的 Provider
+  providerConfigs: Partial<Record<ProviderId, ProviderConfigV2>>; // 各 Provider 独立配置，切换不清空
+}
+
+interface ProviderConfigV2 {
+  providerId: ProviderId;
+  apiKey: string;   // 用户手工输入；仅存本地；禁止进入日志 / Project / 错误信息
+  baseUrl: string;  // 内置 Provider 强制以 Registry 默认值为准；custom 保留用户输入
+  modelId: string;  // 可自由编辑，Registry 仅提供少量推荐值
+  protocol: Protocol;
+}
+
+type ProviderId = "volcengine" | "openai" | "anthropic" | "gemini" | "custom";
+
+type Protocol =
+  | "openai-responses"
+  | "openai-chat-completions"
+  | "anthropic-messages"
+  | "gemini-generate-content";
+```
+
+归一化规则（写入 / 读取时执行）：
+
+- 内置 Provider 的持久化只信任 `apiKey` 与 `modelId`；`baseUrl` / `protocol` 始终以 Provider Registry 为准，防止本地篡改指向非预期端点
+- `custom` 保留用户填写的 `baseUrl`（trim 后），`protocol` 必须命中四种白名单之一，非法值回退默认 `openai-chat-completions`
+- 默认设置：`activeProviderId = "volcengine"`，内置默认 Base URL 与模型：
+
+```ts
+const DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/plan/v3";
+const DEFAULT_MODEL = "doubao-seed-evolving";
+```
+
+### 2.2 Provider Registry（`lib/ai/providers/registry.ts`）
+
+内置 Provider 静态定义，字段：`id` / `name` / `description` / `protocol` / `defaultBaseUrl` / `modelSuggestions`（少量推荐，可编辑）/ `capabilities.structuredOutput`（`native` / `compatible` / `fallback`）/ `badgePrefix`（工作区动态徽标前缀）。
+
+| Provider ID | 名称 | Protocol | 结构化能力 | 说明 |
+|---|---|---|---|---|
+| `volcengine` | 火山方舟（豆包） | `openai-responses` | native | 默认 Provider；Responses API + `store:false` + thinking disabled |
+| `openai` | OpenAI | `openai-responses` | native | 少量推荐模型，Model ID 可编辑 |
+| `anthropic` | Anthropic | `anthropic-messages` | fallback | JSON-only Prompt + 运行时校验 |
+| `gemini` | Google Gemini | `gemini-generate-content` | compatible | JSON mode + 运行时校验 |
+| `custom` | 自定义（OpenAI 兼容） | `openai-chat-completions` | compatible | Qwen / DeepSeek / Kimi 等均走此项，不设专用 Adapter；Base URL / Protocol 可在高级设置中修改 |
+
+### 2.3 请求期配置 ModelConfig
+
+每次模型请求由浏览器把当前激活 Provider 的配置临时随请求体发送，Route Handler 不持久化、不记录：
+
+```ts
+interface ModelConfig {
+  providerId: ProviderId;
+  apiKey: string;
+  baseUrl: string;
+  modelId: string;
+  protocol: Protocol;
+}
+```
+
+### 2.4 V1 → V2 惰性迁移
+
+- 浏览器端读取设置时：若 `idea-launch:settings:v2` 不存在且 `idea-launch:settings:v1` 存在，执行一次迁移
+- 映射：V1 `{ apiKey, baseUrl, model }` → V2 `activeProviderId: "volcengine"`，`providerConfigs.volcengine = { providerId: "volcengine", apiKey, baseUrl: baseUrl || DEFAULT_BASE_URL, modelId: model || DEFAULT_MODEL, protocol: "openai-responses" }`
+- 迁移流程：读 V1 → 映射归一化 → 写入 V2 envelope → 立即读回校验；校验失败则不启用迁移结果
+- **V1 原始数据保留不删除**；清空设置（`clearSettingsV2`）时同时删除 V1 与 V2 两个 key
+- SSR 环境不迁移（`loadSettingsV2` 返回 `null`）
+
+## 2.5 旧版 Settings V1（仅迁移用途）
 
 ```ts
 interface SettingsEnvelope {
@@ -28,26 +106,9 @@ interface SettingsEnvelope {
 }
 
 interface Settings {
-  apiKey: string;        // 用户手工输入；仅存本地；禁止进入日志/Project
-  baseUrl: string;       // 默认 DEFAULT_BASE_URL
-  model: string;         // 默认 DEFAULT_MODEL
-}
-```
-
-默认值：
-
-```ts
-const DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/plan/v3";
-const DEFAULT_MODEL = "doubao-seed-2.1-pro";
-```
-
-AI 层模型目录常量（`lib/ai/config.ts`）：
-
-```ts
-interface ModelOption {
-  id: string;          // "doubao-seed-2.1-pro"
-  label: string;       // "豆包 Seed 2.1 Pro"
-  provider: string;    // "Volcengine Ark Agent Plan"
+  apiKey: string;
+  baseUrl: string;
+  model: string;
 }
 ```
 
@@ -591,54 +652,41 @@ interface Project {
 
 ## 8. API 请求 / 响应契约
 
-### 8.1 连接测试 `POST /api/ai/test`
+所有 Route Handler 统一约定：
 
-请求：
-
-```ts
-interface TestConnectionRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-}
-```
-
-成功响应：
+- 请求体第一个字段为 `modelConfig: ModelConfig`（定义见 §2.3）；Route 先校验配置与业务输入，再交给 AI Runtime，不感知 Provider 差异
+- 统一响应：
 
 ```ts
 interface ApiSuccess<T> { ok: true; data: T; }
+interface ApiFailure { ok: false; error: RunError; } // RunError { code: AiErrorCode; message: string }
+type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+```
+
+- 错误信息一律为面向用户的中文脱敏文案，不回显 API Key / Authorization / 请求头 / 请求体 / 原始错误全文
+
+### 8.1 连接测试 `POST /api/ai/test`
+
+```ts
+interface TestConnectionRequest { modelConfig: ModelConfig; }
 
 interface TestConnectionResult {
-  model: string;
+  providerId: ProviderId;
+  modelId: string;
   latencyMs: number;
 }
 ```
 
-失败响应：
-
-```ts
-interface ApiFailure {
-  ok: false;
-  error: { code: AiErrorCode; message: string };
-}
-```
+走完整链路：端点可达 → Key 有效 → Model 可用 → 能完成最小结构化请求（`{"ok":true}`）；成功仅返回 Provider ID / Model ID / 耗时。
 
 ### 8.2 想法理解 `POST /api/ai/understand`
 
-请求：
-
 ```ts
 interface UnderstandRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
 }
-```
 
-成功响应 `data`：
-
-```ts
 interface UnderstandResult {
   ideaUnderstanding: IdeaUnderstanding;
   latencyMs: number;
@@ -647,21 +695,13 @@ interface UnderstandResult {
 
 ### 8.3 澄清问题生成 `POST /api/ai/clarify/questions`
 
-请求：
-
 ```ts
 interface ClarifyQuestionsRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
 }
-```
 
-成功响应 `data`：
-
-```ts
 interface ClarifyQuestionsResult {
   questions: ClarificationQuestions;
   latencyMs: number;
@@ -670,154 +710,117 @@ interface ClarifyQuestionsResult {
 
 ### 8.4 上下文综合 `POST /api/ai/clarify/synthesize`
 
-请求：
-
 ```ts
 interface ClarifySynthesisRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   questions: ClarificationQuestion[];
   answers: ClarificationAnswer[];
 }
-```
 
-成功响应 `data`：
-
-```ts
 interface ClarifySynthesisResult {
   clarifiedContext: ClarifiedContext;
   latencyMs: number;
 }
 ```
 
-任一问题缺少有效答案时返回 `AI_BAD_REQUEST`（「还有问题没有回答，请补充后再提交。」）；空 `questions`（0 题自动路径）合法。
+任一问题缺少有效答案时返回 `BAD_CONFIGURATION`（「还有问题没有回答，请补充后再提交。」）；空 `questions`（0 题自动路径）合法。
 
 ### 8.5 产品分析 `POST /api/ai/analyze/product`
 
-请求：
-
 ```ts
 interface ProductAnalysisRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState; // clarifiedContext 必须非 null
 }
-```
 
-成功响应 `data`：
-
-```ts
 interface ProductAnalysisResultResponse {
   productAnalysis: ProductAnalysisResult;
   latencyMs: number;
 }
 ```
 
-`clarification.clarifiedContext` 为 `null` 时返回 `AI_BAD_REQUEST`（「缺少已确认的 Clarified Context，无法进行产品分析。」）。
+`clarification.clarifiedContext` 为 `null` 时返回 `BAD_CONFIGURATION`（「缺少已确认的 Clarified Context，无法进行产品分析。」）。
 
 ### 8.6 MVP 范围收敛 `POST /api/ai/scope/mvp`
 
-请求：
-
 ```ts
 interface MvpScopingRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;      // clarifiedContext 必须非 null
   productAnalysis: ProductAnalysisResult; // 最主要输入，必须存在
 }
-```
 
-成功响应 `data`：
-
-```ts
 interface MvpScopingResultResponse {
   mvpScoping: MvpScopingResult;
   latencyMs: number;
 }
 ```
 
-`clarification.clarifiedContext` 为 `null` 或 `productAnalysis` 缺失时返回 `AI_BAD_REQUEST`。
+`clarification.clarifiedContext` 为 `null` 或 `productAnalysis` 缺失时返回 `BAD_CONFIGURATION`。
 
 ### 8.7 执行方案规划 `POST /api/ai/plan/execution`
 
-请求：
-
 ```ts
 interface ExecutionPlanningRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;       // clarifiedContext 必须非 null
   productAnalysis: ProductAnalysisResult;  // 必须存在
   mvpScoping: MvpScopingResult;            // 最高优先级输入，必须存在
 }
-```
 
-成功响应 `data`：
-
-```ts
 interface ExecutionPlanningResultResponse {
   executionPlanning: ExecutionPlanningResult;
   latencyMs: number;
 }
 ```
 
-错误处理：`clarification.clarifiedContext` 为 `null` 时返回 `AI_BAD_REQUEST`（「缺少已确认的 Clarified Context，无法生成执行方案。」）；`rawIdea` 为空时返回「缺少产品想法，无法生成执行方案。」；`productAnalysis` / `mvpScoping` 缺失或请求体不满足运行时守卫时返回通用 `AI_BAD_REQUEST`；未配置 Key 返回 `AI_MISSING_KEY`。
+错误处理：`clarification.clarifiedContext` 为 `null` 时返回 `BAD_CONFIGURATION`（「缺少已确认的 Clarified Context，无法生成执行方案。」）；`rawIdea` 为空时返回「缺少产品想法，无法生成执行方案。」；`productAnalysis` / `mvpScoping` 缺失或请求体不满足运行时守卫时同样返回 `BAD_CONFIGURATION`。本节点动作级超时 180000ms。
 
 ### 8.8 最终一致性审计 `POST /api/ai/review/final`
 
-请求：
-
 ```ts
 interface FinalReviewRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
-  clarification: ClarificationState;       // clarifiedContext 必须非 null
-  productAnalysis: ProductAnalysisResult;  // 必须存在
-  mvpScoping: MvpScopingResult;            // 必须存在
+  clarification: ClarificationState;         // clarifiedContext 必须非 null
+  productAnalysis: ProductAnalysisResult;    // 必须存在
+  mvpScoping: MvpScopingResult;              // 必须存在
   executionPlanning: ExecutionPlanningResult; // 必须存在
 }
-```
 
-成功响应 `data`：
-
-```ts
 interface FinalReviewResultResponse {
   finalReview: FinalReviewResult;
   latencyMs: number;
 }
 ```
 
-错误处理：仅用户手动触发；`clarifiedContext` 或 `executionPlanning` 缺失时返回 `AI_BAD_REQUEST`（可读中文提示）；请求使用默认 `REQUEST_TIMEOUT_MS` 120000ms；模型输出经 `FINAL_REVIEW_JSON_SCHEMA` 严格校验，失败返回 `AI_INVALID_RESPONSE`。失败不写入 `finalReview`，全部上游结果保留，可手动重试。
+仅用户手动触发；`clarifiedContext` 或 `executionPlanning` 缺失时返回 `BAD_CONFIGURATION`（可读中文提示）；动作级超时使用默认 120000ms；模型输出经运行时 Schema 校验，一次修复后仍失败返回 `INVALID_STRUCTURED_OUTPUT`。失败不写入 `finalReview`，全部上游结果保留，可手动重试。
 
-## 9. 错误码
+## 9. 错误码（统一七码，Provider-agnostic）
+
+错误归一化集中于 `lib/ai/errors.ts`，HTTP 状态映射集中于 `lib/ai/http.ts`。
 
 ```ts
 type AiErrorCode =
-  | "AI_MISSING_KEY"          // 未配置 API Key
-  | "AI_AUTH_ERROR"           // Key 无效 / 鉴权失败
-  | "AI_NETWORK_ERROR"        // 网络失败 / 无法连接
-  | "AI_PROVIDER_ERROR"       // Agent Plan 返回错误（限流/服务端）
-  | "AI_BAD_REQUEST"          // 请求参数问题
-  | "AI_PARSE_ERROR"          // JSON 解析失败
-  | "AI_INVALID_RESPONSE"     // 输出结构不符合 Schema
-  | "AI_TIMEOUT";             // 请求超时
+  | "INVALID_API_KEY"            // Key 无效 / 鉴权失败（401 / 403）
+  | "MODEL_NOT_FOUND"            // 模型 ID 不存在（404）
+  | "RATE_LIMITED"               // 触发限流（429）
+  | "TIMEOUT"                     // 请求超时（408 / 504）
+  | "INVALID_STRUCTURED_OUTPUT"  // JSON 解析 / Schema 校验在一次修复后仍失败
+  | "PROVIDER_UNAVAILABLE"       // Provider 服务端错误（5xx）/ 网络不可达兜底
+  | "BAD_CONFIGURATION";         // 本地配置或请求参数问题（缺 Key、缺上游产物等；400）
 ```
+
+HTTP 状态映射：`BAD_CONFIGURATION` → 400、`INVALID_API_KEY` → 401、`TIMEOUT` → 504，其余四码 → 502。所有错误响应只携带 `code` 与中文 `message`，不转发 Provider 原始错误全文。
 
 ## 10. V1 扩展边界（V1 Complete）
 

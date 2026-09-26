@@ -1,11 +1,15 @@
-// 通过 useSyncExternalStore 订阅本地设置，避免在 effect 中同步 setState。
+// 通过 useSyncExternalStore 订阅本地设置 V2，避免在 effect 中同步 setState。
+// 首次订阅若仅存在 V1 数据，loadSettingsV2 会完成 V1→V2 迁移并派发变更事件。
 
 import { useSyncExternalStore } from "react";
 import { SETTINGS_CHANGE_EVENT } from "./events";
-import { SETTINGS_KEY } from "@/lib/storage/keys";
+import { SETTINGS_V2_KEY } from "@/lib/storage/keys";
 import { hasStorage } from "@/lib/storage/core";
-import { loadSettings } from "@/lib/storage/settings";
-import type { Settings } from "@/lib/types";
+import {
+  getActiveModelConfig,
+  loadSettingsV2,
+} from "@/lib/storage/settings-v2";
+import type { ModelConfig, SettingsV2 } from "@/lib/types";
 
 function subscribe(callback: () => void): () => void {
   window.addEventListener("storage", callback);
@@ -17,36 +21,35 @@ function subscribe(callback: () => void): () => void {
 }
 
 let lastRaw: string | null | undefined;
-let cached: Settings | null = null;
+let cached: SettingsV2 | null = null;
 
-function getSnapshot(): Settings | null {
+function getSnapshot(): SettingsV2 | null {
   if (!hasStorage()) return null;
-  const raw = window.localStorage.getItem(SETTINGS_KEY);
+  const raw = window.localStorage.getItem(SETTINGS_V2_KEY);
   if (raw !== lastRaw) {
     lastRaw = raw;
-    cached = raw === null ? null : loadSettings();
+    cached = loadSettingsV2();
   }
   return cached;
 }
 
-function getServerSnapshot(): Settings | null {
+function getServerSnapshot(): SettingsV2 | null {
   return null;
 }
 
-/** 当前设置；SSR / 未水合时返回 null */
-export function useSettings(): Settings | null {
+/** 当前设置 V2；SSR / 未水合时返回 null */
+export function useSettings(): SettingsV2 | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
-/** 当前是否已配置 API Key */
-export function useHasApiKey(): boolean {
+/** 当前激活 Provider 的完整 ModelConfig（含 API Key）；未水合时返回 null */
+export function useActiveModelConfig(): ModelConfig | null {
   const settings = useSettings();
-  return Boolean(settings?.apiKey);
+  return getActiveModelConfig(settings);
 }
 
-/** 通知同页面设置已变更（storage 事件不会在同文档触发） */
-export function notifySettingsChanged(): void {
-  if (hasStorage()) {
-    window.dispatchEvent(new Event(SETTINGS_CHANGE_EVENT));
-  }
+/** 当前激活 Provider 是否已配置 API Key */
+export function useHasApiKey(): boolean {
+  const modelConfig = useActiveModelConfig();
+  return Boolean(modelConfig?.apiKey);
 }

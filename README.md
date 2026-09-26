@@ -2,7 +2,7 @@
 
 **AI Product Planning Workspace for Independent Builders**
 
-基于豆包 Seed 2.1 Pro 的独立开发立项助手，把一个模糊的产品想法逐步转化为可以开始开发的执行方案。
+独立开发立项助手，把一个模糊的产品想法逐步转化为可以开始开发的执行方案。内置 Provider-agnostic 多模型运行时，默认使用火山方舟豆包 Seed 2.1 Pro，也支持 OpenAI、Anthropic、Google Gemini 与自定义 OpenAI 兼容服务。
 
 **[在线体验](https://idea.kaminono.com)**：https://idea.kaminono.com
 
@@ -23,9 +23,10 @@ idea-launch 把这个过程拆成一条连续的大模型工作流。每个阶�
 地址：[https://idea.kaminono.com](https://idea.kaminono.com)
 
 1. 打开右上角「设置」
-2. 填写你自己的火山引擎 Agent Plan API Key
-3. 在首页输入一个产品想法
-4. 点击「开始分析」，按工作流逐步推进
+2. 选择一个模型 Provider（默认火山方舟 / 豆包；也支持 OpenAI、Anthropic、Gemini、自定义 OpenAI 兼容服务），填写你自己的 API Key 与模型 ID
+3. 点击「测试连接」确认可达性、Key、模型与结构化能力均正常
+4. 在首页输入一个产品想法（或点击一个产品想法模板快速开始）
+5. 点击「开始分析」，按工作流逐步推进
 
 当前产品采用 BYOK（Bring Your Own Key）模式，用户使用自己的模型 API Key，按自己的模型用量计费。
 
@@ -58,10 +59,11 @@ flowchart LR
 Next.js App Router + React 19 + TypeScript（strict）+ Tailwind CSS v4，图标使用 lucide-react。
 
 - 前端组件只调用本项目的 Next.js Route Handler，不直接发起第三方模型请求
-- `app/api/ai/` 下的 Route Handler 只做转发与必要的数据整理
-- `lib/ai/` 集中管理模型配置、Prompt、JSON Schema、运行时校验、错误归一化与调用客户端
-- 结构化输出通过 Responses API 的 `json_schema` 完成，响应在运行时按 Schema 校验
-- 模型固定为豆包 Seed 2.1 Pro（火山引擎 Agent Plan）
+- `app/api/ai/` 下的 Route Handler 只做校验、数据整理与转发，统一接收 `modelConfig`，不包含任何 Provider 判断分支
+- 模型调用分层：业务客户端（`lib/ai/client.ts`）→ AI Runtime（`lib/ai/providers/runtime.ts`：能力包装、结构化守卫、最多一次修复）→ Provider Adapter（按 `openai-responses` / `openai-chat-completions` / `anthropic-messages` / `gemini-generate-content` 四种协议处理差异）
+- Provider Registry（`lib/ai/providers/registry.ts`）统一描述内置 Provider：火山方舟（默认，豆包 Seed 2.1 Pro）、OpenAI、Anthropic、Google Gemini、自定义（OpenAI 兼容，Qwen / DeepSeek / Kimi 等均走此项）
+- 结构化输出按 native / compatible / fallback 三级处理，响应一律在运行时按 `lib/ai/schemas.ts` 校验；错误归一化为统一七码
+- Prompt、JSON Schema、运行时校验与错误归一化集中管理于 `lib/ai/`
 
 ## 本地运行
 
@@ -72,7 +74,7 @@ npm install
 npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)，在设置中填入火山引擎 Agent Plan API Key 即可。
+打开 [http://localhost:3000](http://localhost:3000)，在设置中选择 Provider、填入 API Key 与模型 ID，测试连接通过后即可使用。
 
 ```bash
 npm run build   # 生产构建
@@ -82,11 +84,12 @@ npm run lint    # 代码检查
 ## 数据与隐私
 
 - 不需要账号，不需要注册
-- API Key 持久化保存在当前浏览器的 localStorage
-- 项目数据全部保存在当前浏览器本地，V1 不使用云数据库，也没有服务端持久化
-- 模型调用时，浏览器会把本次请求所需的 API Key 临时发送到应用的 Next.js Route Handler，由 Route Handler 转发到火山引擎
-- 应用服务端不持久化 API Key，请求结束即释放
-- 可以随时在设置或历史项目中清空全部本地数据
+- 各 Provider 的 API Key 只保存在当前浏览器的 localStorage（Settings V2，按 Provider 独立存储），绝不进入项目数据
+- 项目数据全部保存在当前浏览器本地，不使用云数据库，也没有服务端持久化
+- 模型调用时，浏览器把本次请求所需的配置与 API Key 临时发送到应用的 Next.js Route Handler，由 Handler 转发到当前激活的 Provider；请求结束即释放，不写日志、不出现在错误信息中
+- 自定义 Provider 的 Base URL 在服务端接受 SSRF 防护：仅允许 http(s)，拒绝回环 / 私网 / 链路本地 / 云 metadata 等内部地址，域名经 DNS 解析后再次校验
+- 错误信息统一脱敏归一化（七码），不回显 Key、请求头、请求体或 Provider 原始错误全文
+- 可以随时在设置或历史项目中清空全部本地数据（同时清理 Settings V1 / V2）
 
 ## 许可与使用
 

@@ -9,8 +9,8 @@
 它帮助独立开发者把一个还比较模糊的产品想法，通过大模型逐步理解、补充、分析、收敛，最终形成可以进入设计与开发阶段的可执行立项方案。
 
 - 形态：本地运行的 Web Demo（Next.js）
-- 模型：火山引擎豆包 Seed 2.1 Pro（经 Agent Plan 调用）
-- 演示场景：火山引擎 ADG 社区直播《基于豆包大模型的独立开发立项助手，把产品想法变成可执行方案》
+- 模型：Provider-agnostic 多模型运行时，内置火山方舟（默认模型豆包 Seed 2.1 Pro，经 Agent Plan / Responses API 调用）、OpenAI、Anthropic、Google Gemini 与自定义 OpenAI 兼容服务；一次只使用用户在设置中激活的一个 Provider
+- 演示场景：火山引擎 ADG 社区直播《基于豆包大模型的独立开发立项助手，把产品想法变成可执行方案》（默认开箱即用 Provider 为火山方舟豆包）
 
 ## 2. 核心用户
 
@@ -84,7 +84,7 @@ idea-launch 通过分步 AI Workflow，逐阶段解决上述问题，而不是�
   - 只读审计全部上游产物：输出 verdict（ready / needs_attention，无分数）、5～7 项一致性检查、范围完整性（能否定语境区分）、事实完整性、执行准备度、0～5 条调整建议与最终总结
   - 方案一致即判 ready 可开工，不强行制造问题；发现范围回流 / 事实漂移时给 needs_attention，只建议不自动修改
 - 第 13 项相关：localStorage 本地保存、刷新恢复、历史项目（含旧版本数据兼容）
-- 模型连接：API Key 设置 + 真实连接测试
+- 模型连接：多 Provider 设置（V2）+ 真实端到端连接测试（可达性 / Key / 模型 / 结构化能力）
 
 ### 4.2 未实现环节（仅记录规格）
 
@@ -134,7 +134,7 @@ Execution Planning 不重新做产品判断，也不重新砍范围；它把**�
 - **范围冻结（最高优先级验收规则）**：MVP Scoping 中 `shouldDefer`（暂缓做）与 `explicitlyOutOfScope`（明确不做）的能力，严禁重新出现在 surfaces / technicalPlan / dataModel / milestones / tasks 中；登录注册、云数据库、云同步、支付、权限体系、社区、多端 App、企业后台、推荐流、音视频等被排除能力不得回流。仅当某项基础设施能力是实现已冻结 MVP 的必要基础（例如本地存储、单一 AI 接口转发）时允许出现，且必须明确说明它是「实现基础」而非新增产品功能
 - 输出必须可执行、可验收：任务粒度为一个独立开发者可以直接开工的最小工作项；里程碑不伪造日期、不做甘特图，只表达阶段顺序与交付物
 - 数量边界：`milestones` 3～6 个；`tasks` 8～18 个（ID 形如 `T01`，标注 `milestoneId`、类型、工作量 S/M/L、依赖任务 ID 与可人工验收的 acceptance）；`productStructure.userFlow` 3～8 步、`surfaces` 仅包含 MVP 真正需要的界面；`dataModel` 2～6 个核心对象（只写名称 / 用途 / 关键字段）；`validationCheckpoints` 2～4 个；`executionRisks` 2～4 项；`firstActions` 3～5 项（有序、立即可以开始）；`definitionOfDone` 3～6 项
-- 技术路径保持轻量：默认沿用 V1 已验证的技术栈与本地优先架构（Next.js + 浏览器本地存储 + 单一豆包模型经本机 Route Handler 转发），不引入服务端持久化、登录、多模型或大型新依赖；AI 能力在 MVP 不需要时显式标注 `needed = false`
+- 技术路径保持轻量：默认沿用已验证的技术栈与本地优先架构（Next.js + 浏览器本地存储 + 单一激活模型经本机 Route Handler 转发），不引入服务端持久化、登录、多模型自动路由或大型新依赖；AI 能力在 MVP 不需要时显式标注 `needed = false`
 - 任务依赖必须真实可解析：`dependencies` 只引用本次输出中存在的任务 ID，不允许悬空依赖；验收标准使用可人工判断的完成条件，不写「代码质量好」这类空泛描述
 - 严格工作边界：不重新生成产品分析 / MVP 范围结论，不输出最终立项方案、商业计划、运营增长方案或真实代码；`readyForFinalReview` 正常为 `true`
 - 计划只服务第一版：`definitionOfDone` 明确「第一版做到这里就可以停」，防止执行阶段重新膨胀范围
@@ -160,9 +160,10 @@ V1 明确不做：
 
 ## 6. 数据与隐私原则
 
-- V1 是纯本地 Demo，所有业务数据只保存在浏览器 `localStorage`
-- API Key 仅保存在本地浏览器；调用时随单次请求临时发送给本机 Next.js Route Handler，请求结束后不持久化
-- 禁止在任何源代码、日志、错误信息中出现 API Key
+- 纯本地 Demo，所有业务数据只保存在浏览器 `localStorage`
+- 每个 Provider 的 API Key 仅保存在本地浏览器（Settings V2）；调用时随单次请求临时发送给本机 Next.js Route Handler，由 Route Handler 转发到当前激活 Provider，请求结束后不持久化
+- 禁止在任何源代码、日志、错误信息中出现 API Key / Authorization 头；面向用户的错误一律脱敏，不回显上游原始错误全文
+- 自定义 API 地址（Custom）在服务端做 SSRF 防护：仅允许 http(s)，拒绝回环 / 私网 / 链路本地 / 云 metadata，域名经 DNS 解析后再次校验
 - 数据结构详见 [04-data-schema.md](./04-data-schema.md)
 
 ## 7. 验收取向

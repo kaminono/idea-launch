@@ -1,10 +1,13 @@
 export {
-  clearApiKey,
-  clearSettings,
-  defaultSettings,
-  loadSettings,
-  saveSettings,
-} from "./settings";
+  clearActiveApiKey,
+  clearSettingsV2,
+  defaultSettingsV2,
+  getActiveModelConfig,
+  loadSettingsV2,
+  saveSettingsV2,
+} from "./settings-v2";
+
+export { loadSettingsV1 } from "./settings";
 
 export {
   clearProjects,

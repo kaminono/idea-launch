@@ -15,7 +15,7 @@ export function TopBar({ onOpenHistory, onOpenSettings }: TopBarProps) {
         <BrandMark />
         <span className="flex items-baseline gap-2">
           <span className="text-[15px] font-semibold tracking-tight text-ink">
-            idea-launch
+            Idea Launch
           </span>
           <span className="hidden text-xs text-muted sm:inline">
             独立开发立项助手
@@ -45,26 +45,18 @@ export function TopBar({ onOpenHistory, onOpenSettings }: TopBarProps) {
 }
 
 /** 品牌标识：一条收敛轨迹，Aubergine 节点汇入 Brand Orange 终点。
- *  抽象路径 / 收敛节点，禁止火箭 / Sparkle / 机器人。 */
+ *  抽象路径 / 收敛节点，禁止火箭 / Sparkle / 机器人。
+ *  图形源文件：/public/brand-mark.svg，同时作为浏览器 favicon 使用。 */
 export function BrandMark() {
+  // eslint-disable-next-line @next/next/no-img-element -- 24px 内联品牌矢量图，无需 next/image 优化
   return (
-    <svg
+    <img
+      src="/brand-mark.svg"
       width="24"
       height="24"
-      viewBox="0 0 24 24"
-      fill="none"
+      alt=""
       aria-hidden="true"
       className="shrink-0"
-    >
-      <path
-        d="M3.5 18.5C8 18 9.5 10 20.5 6.5"
-        stroke="#F15A37"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <circle cx="3.5" cy="18.5" r="2.1" fill="#4A304D" />
-      <circle cx="11.5" cy="13" r="1.6" fill="#4A304D" fillOpacity="0.55" />
-      <circle cx="20.5" cy="6.5" r="2.6" fill="#F15A37" />
-    </svg>
+    />
   );
 }

@@ -1,10 +1,9 @@
 import { scopeMvp } from "@/lib/ai/client";
 import { AiError } from "@/lib/ai/errors";
 import { errorResponse } from "@/lib/ai/http";
+import { isClarificationStatePayload } from "@/lib/ai/server/guards";
+import { validateModelConfig } from "@/lib/ai/server/validate-config";
 import {
-  isClarificationAnswer,
-  isClarificationQuestion,
-  isClarifiedContext,
   isIdeaUnderstanding,
   isProductAnalysisResult,
 } from "@/lib/ai/schemas";
@@ -19,34 +18,30 @@ export async function POST(request: Request): Promise<Response> {
   try {
     parsed = await request.json();
   } catch {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
 
   if (!isMvpScopingRouteRequest(parsed)) {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
-  }
-  if (!parsed.apiKey.trim()) {
-    return errorResponse(new AiError("AI_MISSING_KEY"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
   if (!parsed.rawIdea.trim()) {
     return errorResponse(
-      new AiError("AI_BAD_REQUEST", "缺少产品想法，无法收敛 MVP 范围。")
+      new AiError("BAD_CONFIGURATION", "缺少产品想法，无法收敛 MVP 范围。")
     );
   }
   if (parsed.clarification.clarifiedContext === null) {
     return errorResponse(
       new AiError(
-        "AI_BAD_REQUEST",
+        "BAD_CONFIGURATION",
         "缺少已确认的 Clarified Context，无法收敛 MVP 范围。"
       )
     );
   }
 
   try {
+    const config = await validateModelConfig(parsed.modelConfig);
     const { result, latencyMs } = await scopeMvp({
-      apiKey: parsed.apiKey,
-      baseUrl: parsed.baseUrl,
-      model: parsed.model,
+      config,
       rawIdea: parsed.rawIdea,
       ideaUnderstanding: parsed.ideaUnderstanding,
       clarification: parsed.clarification,
@@ -70,30 +65,11 @@ function isMvpScopingRouteRequest(
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
   return (
-    typeof candidate.apiKey === "string" &&
-    typeof candidate.baseUrl === "string" &&
-    typeof candidate.model === "string" &&
+    typeof candidate.modelConfig === "object" &&
+    candidate.modelConfig !== null &&
     typeof candidate.rawIdea === "string" &&
     isIdeaUnderstanding(candidate.ideaUnderstanding) &&
     isClarificationStatePayload(candidate.clarification) &&
     isProductAnalysisResult(candidate.productAnalysis)
-  );
-}
-
-/** 校验请求中的 ClarificationState（必须含 questions/answers/clarifiedContext） */
-function isClarificationStatePayload(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.needed === "boolean" &&
-    typeof candidate.reason === "string" &&
-    Array.isArray(candidate.questions) &&
-    candidate.questions.every(isClarificationQuestion) &&
-    Array.isArray(candidate.answers) &&
-    candidate.answers.every(isClarificationAnswer) &&
-    (candidate.clarifiedContext === null ||
-      isClarifiedContext(candidate.clarifiedContext)) &&
-    (candidate.completedAt === null ||
-      typeof candidate.completedAt === "string")
   );
 }

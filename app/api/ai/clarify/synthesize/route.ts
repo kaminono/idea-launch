@@ -1,6 +1,7 @@
 import { synthesizeClarification } from "@/lib/ai/client";
 import { AiError } from "@/lib/ai/errors";
 import { errorResponse } from "@/lib/ai/http";
+import { validateModelConfig } from "@/lib/ai/server/validate-config";
 import {
   isClarificationAnswer,
   isClarificationQuestion,
@@ -17,18 +18,15 @@ export async function POST(request: Request): Promise<Response> {
   try {
     parsed = await request.json();
   } catch {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
 
   if (!isClarifySynthesisRequest(parsed)) {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
-  }
-  if (!parsed.apiKey.trim()) {
-    return errorResponse(new AiError("AI_MISSING_KEY"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
   if (!parsed.rawIdea.trim()) {
     return errorResponse(
-      new AiError("AI_BAD_REQUEST", "缺少产品想法，无法整理产品上下文。")
+      new AiError("BAD_CONFIGURATION", "缺少产品想法，无法整理产品上下文。")
     );
   }
   if (
@@ -41,15 +39,14 @@ export async function POST(request: Request): Promise<Response> {
     )
   ) {
     return errorResponse(
-      new AiError("AI_BAD_REQUEST", "还有问题没有回答，请补充后再提交。")
+      new AiError("BAD_CONFIGURATION", "还有问题没有回答，请补充后再提交。")
     );
   }
 
   try {
+    const config = await validateModelConfig(parsed.modelConfig);
     const { result, latencyMs } = await synthesizeClarification({
-      apiKey: parsed.apiKey,
-      baseUrl: parsed.baseUrl,
-      model: parsed.model,
+      config,
       rawIdea: parsed.rawIdea,
       ideaUnderstanding: parsed.ideaUnderstanding,
       questions: parsed.questions,
@@ -83,9 +80,8 @@ function isClarifySynthesisRequest(
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
   return (
-    typeof candidate.apiKey === "string" &&
-    typeof candidate.baseUrl === "string" &&
-    typeof candidate.model === "string" &&
+    typeof candidate.modelConfig === "object" &&
+    candidate.modelConfig !== null &&
     typeof candidate.rawIdea === "string" &&
     isIdeaUnderstanding(candidate.ideaUnderstanding) &&
     Array.isArray(candidate.questions) &&

@@ -22,29 +22,37 @@ export type ProjectStatus =
 /** AI 运行状态 */
 export type RunStatus = "running" | "succeeded" | "failed";
 
-/** AI 错误码 */
+/** AI 错误码（统一七码，Provider-agnostic） */
 export type AiErrorCode =
-  | "AI_MISSING_KEY"
-  | "AI_AUTH_ERROR"
-  | "AI_NETWORK_ERROR"
-  | "AI_PROVIDER_ERROR"
-  | "AI_BAD_REQUEST"
-  | "AI_PARSE_ERROR"
-  | "AI_INVALID_RESPONSE"
-  | "AI_TIMEOUT";
+  | "INVALID_API_KEY"
+  | "MODEL_NOT_FOUND"
+  | "RATE_LIMITED"
+  | "TIMEOUT"
+  | "INVALID_STRUCTURED_OUTPUT"
+  | "PROVIDER_UNAVAILABLE"
+  | "BAD_CONFIGURATION";
 
-/** 用户设置（API Key 仅存在于本地） */
-export interface Settings {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-}
+// ---- 多模型 Provider / Settings V2（定义见 lib/ai/providers/types.ts）----
 
-/** localStorage envelope：版本化包装 */
-export interface SettingsEnvelope {
-  version: 1;
-  data: Settings;
-}
+import type {
+  ModelConfig,
+  ProviderId,
+} from "@/lib/ai/providers/types";
+
+export type {
+  Protocol,
+  ProviderId,
+  StructuredOutputMode,
+  Capabilities,
+  ModelConfig,
+  AdapterRequest,
+  AdapterResult,
+  AIProviderAdapter,
+  ProviderDefinition,
+  ProviderConfigV2,
+  SettingsV2,
+  SettingsV2Envelope,
+} from "@/lib/ai/providers/types";
 
 /** Idea Understanding 结构化结果 */
 export interface IdeaUnderstanding {
@@ -589,20 +597,17 @@ export interface ProjectEnvelope {
 // ---- Route Handler 请求 / 响应契约 ----
 
 export interface TestConnectionRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
 }
 
 export interface UnderstandRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
 }
 
 export interface TestConnectionResult {
-  model: string;
+  providerId: ProviderId;
+  modelId: string;
   latencyMs: number;
 }
 
@@ -612,9 +617,7 @@ export interface UnderstandResult {
 }
 
 export interface ClarifyQuestionsRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
 }
@@ -625,9 +628,7 @@ export interface ClarifyQuestionsResult {
 }
 
 export interface ClarifySynthesisRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   questions: ClarificationQuestion[];
@@ -640,9 +641,7 @@ export interface ClarifySynthesisResult {
 }
 
 export interface ProductAnalysisRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;
@@ -654,9 +653,7 @@ export interface ProductAnalysisResultResponse {
 }
 
 export interface MvpScopingRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;
@@ -669,9 +666,7 @@ export interface MvpScopingResultResponse {
 }
 
 export interface ExecutionPlanningRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;
@@ -685,9 +680,7 @@ export interface ExecutionPlanningResultResponse {
 }
 
 export interface FinalReviewRequest {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+  modelConfig: ModelConfig;
   rawIdea: string;
   ideaUnderstanding: IdeaUnderstanding;
   clarification: ClarificationState;

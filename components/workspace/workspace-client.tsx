@@ -39,16 +39,16 @@ import {
   synthesizeClarification,
   understandIdea,
 } from "@/lib/client/api";
-import { loadSettings, saveProject } from "@/lib/storage";
-import { MODEL_OPTIONS } from "@/lib/ai/config";
+import { saveProject } from "@/lib/storage";
 import { useProject } from "@/lib/client/use-project";
 import { useHydrated } from "@/lib/client/use-hydrated";
+import { useActiveModelConfig } from "@/lib/client/use-settings";
+import { getProviderDefinition } from "@/lib/ai/providers/registry";
 import type {
   AnalysisRun,
   ClarificationAnswer,
   Project,
   RunError,
-  Settings as SettingsType,
   WorkflowStage,
 } from "@/lib/types";
 
@@ -82,7 +82,7 @@ type Phase =
 function toRunError(error: unknown): RunError {
   if (error instanceof ClientAiError) return error.toRunError();
   return {
-    code: "AI_PROVIDER_ERROR",
+    code: "PROVIDER_UNAVAILABLE",
     message:
       error instanceof Error ? error.message : "处理失败，请稍后重试。",
   };
@@ -133,19 +133,22 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const inFlightRef = useRef(false);
 
+  // 当前激活 Provider 的完整模型配置（含 API Key），由设置订阅驱动；
+  // 仅在 localStorage 原始数据变化时才重建引用，可安全作为节点函数依赖。
+  const modelConfig = useActiveModelConfig();
+
   // ---- Stage 1：Idea Understanding ----
   const runUnderstanding = useCallback(async (): Promise<void> => {
     if (inFlightRef.current) return;
-    const settings: SettingsType = loadSettings();
     const current = storedProject ?? null;
-    if (!settings.apiKey.trim() || !current) return;
+    if (!modelConfig?.apiKey.trim() || !current) return;
 
     inFlightRef.current = true;
     const startedAt = new Date().toISOString();
 
     try {
       const { ideaUnderstanding, latencyMs } = await understandIdea({
-        settings,
+        modelConfig,
         rawIdea: current.rawIdea,
       });
       const finishedAt = new Date().toISOString();
@@ -185,15 +188,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       inFlightRef.current = false;
       queueMicrotask(() => setRetryingUnderstanding(false));
     }
-  }, [storedProject]);
+  }, [storedProject, modelConfig]);
 
   // ---- Stage 2a：Clarification Question Generation ----
   const runQuestions = useCallback(async (): Promise<void> => {
     if (inFlightRef.current) return;
-    const settings = loadSettings();
     const current = storedProject ?? null;
     if (
-      !settings.apiKey.trim() ||
+      !modelConfig?.apiKey.trim() ||
       !current ||
       !current.ideaUnderstanding
     ) {
@@ -207,7 +209,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     try {
       const { questions: result } = await generateClarificationQuestions({
-        settings,
+        modelConfig,
         rawIdea: current.rawIdea,
         ideaUnderstanding: current.ideaUnderstanding,
       });
@@ -262,16 +264,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         prev === "questions-running" ? null : prev
       );
     }
-  }, [storedProject]);
+  }, [storedProject, modelConfig]);
 
   // ---- Stage 2b：Clarification Synthesis ----
   const runSynthesis = useCallback(async (): Promise<void> => {
       if (inFlightRef.current) return;
-      const settings = loadSettings();
       const current = storedProject ?? null;
       const clarification = current?.clarification;
       if (
-        !settings.apiKey.trim() ||
+        !modelConfig?.apiKey.trim() ||
         !current ||
         !current.ideaUnderstanding ||
         !clarification
@@ -287,7 +288,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       try {
         const { clarifiedContext, latencyMs } =
           await synthesizeClarification({
-            settings,
+            modelConfig,
             rawIdea: current.rawIdea,
             ideaUnderstanding: current.ideaUnderstanding,
             questions: clarification.questions,
@@ -340,7 +341,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         );
       }
     },
-    [storedProject]
+    [storedProject, modelConfig]
   );
 
   // 答案实时本地保存：仅更新 clarification.answers，不动 lastRun / status，
@@ -364,11 +365,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   // ---- Stage 3：Product Analysis（仅用户手动触发，不挂自动 effect）----
   const runAnalysis = useCallback(async (): Promise<void> => {
     if (inFlightRef.current) return;
-    const settings = loadSettings();
     const current = storedProject ?? null;
     const clarification = current?.clarification;
     if (
-      !settings.apiKey.trim() ||
+      !modelConfig?.apiKey.trim() ||
       !current ||
       !current.ideaUnderstanding ||
       !clarification ||
@@ -384,7 +384,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     try {
       const { productAnalysis, latencyMs } = await analyzeProduct({
-        settings,
+        modelConfig,
         rawIdea: current.rawIdea,
         ideaUnderstanding: current.ideaUnderstanding,
         clarification,
@@ -433,17 +433,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         prev === "analysis-running" ? null : prev
       );
     }
-  }, [storedProject]);
+  }, [storedProject, modelConfig]);
 
   // ---- Stage 4：MVP Scoping（仅用户手动触发，不挂自动 effect）----
   const runMvpScoping = useCallback(async (): Promise<void> => {
     if (inFlightRef.current) return;
-    const settings = loadSettings();
     const current = storedProject ?? null;
     const clarification = current?.clarification;
     const productAnalysis = current?.productAnalysis?.result;
     if (
-      !settings.apiKey.trim() ||
+      !modelConfig?.apiKey.trim() ||
       !current ||
       !current.ideaUnderstanding ||
       !clarification ||
@@ -460,7 +459,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     try {
       const { mvpScoping: result, latencyMs } = await scopeMvp({
-        settings,
+        modelConfig,
         rawIdea: current.rawIdea,
         ideaUnderstanding: current.ideaUnderstanding,
         clarification,
@@ -510,18 +509,17 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         prev === "mvp-running" ? null : prev
       );
     }
-  }, [storedProject]);
+  }, [storedProject, modelConfig]);
 
   // ---- Stage 5：Execution Planning（仅用户手动触发，不挂自动 effect）----
   const runExecutionPlanning = useCallback(async (): Promise<void> => {
     if (inFlightRef.current) return;
-    const settings = loadSettings();
     const current = storedProject ?? null;
     const clarification = current?.clarification;
     const productAnalysis = current?.productAnalysis?.result;
     const mvpScoping = current?.mvpScoping?.result;
     if (
-      !settings.apiKey.trim() ||
+      !modelConfig?.apiKey.trim() ||
       !current ||
       !current.ideaUnderstanding ||
       !clarification ||
@@ -539,7 +537,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     try {
       const { executionPlanning: result, latencyMs } = await planExecution({
-        settings,
+        modelConfig,
         rawIdea: current.rawIdea,
         ideaUnderstanding: current.ideaUnderstanding,
         clarification,
@@ -591,19 +589,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         prev === "execution-running" ? null : prev
       );
     }
-  }, [storedProject]);
+  }, [storedProject, modelConfig]);
 
   // ---- Final Review（仅用户手动触发，只读审计，不修改前序结果）----
   const runFinalReview = useCallback(async (): Promise<void> => {
     if (inFlightRef.current) return;
-    const settings = loadSettings();
     const current = storedProject ?? null;
     const clarification = current?.clarification;
     const productAnalysis = current?.productAnalysis?.result;
     const mvpScoping = current?.mvpScoping?.result;
     const executionPlanning = current?.executionPlanning?.result;
     if (
-      !settings.apiKey.trim() ||
+      !modelConfig?.apiKey.trim() ||
       !current ||
       !current.ideaUnderstanding ||
       !clarification ||
@@ -623,7 +620,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
     try {
       const { finalReview: result, latencyMs } = await reviewFinal({
-        settings,
+        modelConfig,
         rawIdea: current.rawIdea,
         ideaUnderstanding: current.ideaUnderstanding,
         clarification,
@@ -677,11 +674,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         prev === "review-running" ? null : prev
       );
     }
-  }, [storedProject]);
+  }, [storedProject, modelConfig]);
 
   // ---- 自动运行（仅外部存储事件驱动）----
-  const settings = hydrated ? loadSettings() : null;
-  const hasKey = Boolean(settings?.apiKey.trim());
+  const hasKey = Boolean(modelConfig?.apiKey.trim());
 
   // Stage1 自动：全新项目或刷新恢复到未理解
   const shouldAutoUnderstand =
@@ -918,6 +914,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 purpose: "先用结构化视角复述你的原始想法，确认理解没有偏差。",
               };
 
+  // 工作区模型徽标：随设置中激活的 Provider / Model 动态变化，不写死品牌名
+  const modelBadgeLabel = modelConfig
+    ? `${getProviderDefinition(modelConfig.providerId).badgePrefix} · ${modelConfig.modelId}`
+    : "未配置模型";
+
   const lastError = project.lastRun?.error?.message ?? null;
   const understandingLatency =
     project.lastRun?.stage === "idea_understanding"
@@ -997,9 +998,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                     {stageHeader.purpose}
                   </p>
                 </div>
-                <span className="mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-[8px] border border-border bg-surface px-2.5 py-1.5 text-[11px] text-ink-secondary">
-                  <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
-                  {MODEL_OPTIONS[0].label}
+                <span className="mt-1 inline-flex max-w-[260px] shrink-0 items-center gap-1.5 rounded-[8px] border border-border bg-surface px-2.5 py-1.5 text-[11px] text-ink-secondary">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />
+                  <span className="truncate font-mono uppercase tracking-wide">
+                    {modelBadgeLabel}
+                  </span>
                 </span>
               </div>
               {phase === "questions" && (

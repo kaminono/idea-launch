@@ -4,7 +4,7 @@
 import { STORAGE_VERSION } from "./keys";
 
 interface Envelope<T> {
-  version: typeof STORAGE_VERSION;
+  version: number;
   data: T;
 }
 
@@ -20,11 +20,13 @@ export function hasStorage(): boolean {
  * 读取并解析 envelope。
  * - SSR / 无数据：返回 fallback
  * - JSON 损坏 / 版本不符 / 结构异常：备份原始值并安全重置为 fallback
+ * - version 可指定数据版本（默认 v1），供 Settings V2 等复用
  */
 export function readEnvelope<T>(
   key: string,
   fallback: T,
-  validate: (value: unknown) => value is T
+  validate: (value: unknown) => value is T,
+  version: number = STORAGE_VERSION
 ): T {
   if (!hasStorage()) return fallback;
 
@@ -41,7 +43,8 @@ export function readEnvelope<T>(
 
   const envelope = parsed as Partial<Envelope<T>>;
   if (
-    envelope.version !== STORAGE_VERSION ||
+    envelope.version !== version ||
+    envelope.data === undefined ||
     !validate(envelope.data)
   ) {
     quarantine(key, raw);
@@ -52,9 +55,13 @@ export function readEnvelope<T>(
 }
 
 /** 写入版本化 envelope */
-export function writeEnvelope<T>(key: string, data: T): void {
+export function writeEnvelope<T>(
+  key: string,
+  data: T,
+  version: number = STORAGE_VERSION
+): void {
   if (!hasStorage()) return;
-  const envelope: Envelope<T> = { version: STORAGE_VERSION, data };
+  const envelope: Envelope<T> = { version, data };
   window.localStorage.setItem(key, JSON.stringify(envelope));
 }
 

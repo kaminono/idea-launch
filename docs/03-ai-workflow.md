@@ -24,6 +24,28 @@
 
 节点按顺序解锁；左侧导航允许回看已完成节点。
 
+## 2.5 模型调用基础设施：Provider-agnostic AI Runtime
+
+所有节点的模型调用都经过统一分层，业务节点不感知具体 Provider：
+
+```
+Workflow（业务节点 / client.ts 编排）
+  → AI Runtime（runtime.ts：能力包装、结构化守卫、最多一次结构修复）
+    → Provider Adapter（按 Protocol 处理协议差异）
+      → Provider API（openai-responses / openai-chat-completions / anthropic-messages / gemini-generate-content）
+```
+
+- Route Handler 只做请求校验与数据整理，统一接收 `modelConfig`（Provider ID / Protocol / API Key / Base URL / Model ID），再交给 Runtime；禁止在各 Route 复制 Provider 判断逻辑。
+- 内置 Provider 由 Registry 统一描述：火山方舟（默认，`openai-responses`）、OpenAI（`openai-responses`）、Anthropic（`anthropic-messages`）、Google Gemini（`gemini-generate-content`）、自定义（OpenAI 兼容，`openai-chat-completions`；Qwen / DeepSeek / Kimi 等均走此项，不设专用 Adapter）。
+- 结构化输出三级：
+  1. **native**：协议原生 strict schema（Responses API `json_schema` strict）；
+  2. **compatible**：Chat Completions `json_object`、Gemini `responseMimeType: application/json`，以 JSON-only Prompt 约束；
+  3. **fallback**：Anthropic 等不支持结构化模式的协议，仅用 JSON-only Prompt。
+- 无论哪一级，返回文本都必须通过 JSON 解析 + 运行时 Schema 校验（`lib/ai/schemas.ts`）。校验失败时 Runtime **最多带错误反馈自动修复一次**；仍失败抛出 `INVALID_STRUCTURED_OUTPUT`，前端展示可读中文错误并允许重试。
+- 火山方舟（默认）调用保持 Responses API、`store: false`、`thinking: { type: "disabled" }`，默认模型 `doubao-seed-evolving`；其他 Provider 按其 Adapter 能力执行，不额外注入火山专有参数。
+- 超时：Execution Planning 节点 180000ms，其余节点（含 Final Review）120000ms。
+- API Key 只在本次请求内从浏览器经本机 Route Handler 转发给当前激活 Provider，不写日志、不进 Project、不出现在错误信息中。
+
 ## 3. 节点 1：Idea Understanding（已实现）
 
 ### 3.1 目标
@@ -69,11 +91,10 @@
 
 ### 3.5 调用方式
 
-- 端点：`POST {baseUrl}/responses`（Agent Plan 默认 `https://ark.cn-beijing.volces.com/api/plan/v3`）
-- 模型：`doubao-seed-2.1-pro`
-- 使用 Responses API 的 `text.format`（`json_schema`、`strict: true`）约束结构化输出
-- `thinking: { type: "disabled" }`：本节点是结构化提取任务，关闭深度思考以降低直播时延
-- `store: false`：请求内容不在服务端持久化
+- 端点：`POST /api/ai/understand`（Route Handler 接收 `modelConfig` 后经统一 AI Runtime 调用当前激活 Provider）
+- 默认 Provider（火山方舟）：`POST {baseUrl}/responses`（Agent Plan 默认 `https://ark.cn-beijing.volces.com/api/plan/v3`），模型 `doubao-seed-evolving`
+- 使用 Responses API 的 `text.format`（`json_schema`、`strict: true`）约束结构化输出（native 模式）；其他 Provider 按 §2.5 三级能力降级处理
+- 火山方舟调用携带 `thinking: { type: "disabled" }`（结构化提取任务，关闭深度思考以降低直播时延）与 `store: false`（请求内容不在服务端持久化）
 
 ### 3.6 运行时校验（失败闭环）
 
@@ -81,7 +102,7 @@
 
 1. JSON 解析（容忍模型包裹 ```json 代码块的情况）
 2. 逐字段运行时类型校验
-3. 校验失败 → 抛出结构化错误（`AI_INVALID_RESPONSE`），前端展示可读错误并允许重试
+3. 校验失败 → Runtime 带错误反馈自动修复最多一次；仍失败抛出结构化错误（`INVALID_STRUCTURED_OUTPUT`），前端展示可读错误并允许重试
 
 禁止用假数据、默认填充值掩盖真实模型调用或解析失败。
 
@@ -127,10 +148,10 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 
 ### 4.3 调用与校验
 
-- 两个动作均使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`
+- 两个动作均经统一 AI Runtime 调用当前激活 Provider（见 §2.5）；默认火山方舟保持 Responses API `json_schema`（strict）、`thinking: { type: "disabled" }`、`store: false`
 - Route Handler：`POST /api/ai/clarify/questions`、`POST /api/ai/clarify/synthesize`
-- 运行时清洗：丢弃空问题 / 空选项、问题数截断为最多 5 个；`clarificationNeeded = true` 却无有效问题时按非法输出处理
-- Synthesis 路由逐题校验答案完整性（0 题路径合法）；失败允许重试，已填答案不丢失
+- 运行时清洗：丢弃空问题 / 空选项、问题数截断为最多 5 个；`clarificationNeeded = true` 却无有效问题时按非法输出处理（经一次修复仍失败抛 `INVALID_STRUCTURED_OUTPUT`）
+- Synthesis 路由逐题校验答案完整性（0 题路径合法），缺失答案返回 `BAD_CONFIGURATION`；模型类失败允许重试，已填答案不丢失
 
 ## 5. 节点 3：Product Analysis（已实现）
 
@@ -151,7 +172,7 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 ```
 
 - Clarified Context 是主要输入；与早期 Idea Understanding 冲突时，以用户澄清后确认的信息为准
-- Route Handler 强制校验 `clarification.clarifiedContext` 非空，缺失时返回 `AI_BAD_REQUEST`
+- Route Handler 强制校验 `clarification.clarifiedContext` 非空，缺失时返回 `BAD_CONFIGURATION`
 
 ### 5.3 事实边界（Prompt 最高优先级）
 
@@ -225,8 +246,8 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 ### 5.5 调用与校验
 
 - 端点：`POST /api/ai/analyze/product`
-- 继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；复用现有 AI Client，不新建第二套客户端
-- 运行时清洗：字符串字段 trim、空项丢弃、枚举值原样保留；守卫校验失败抛出 `AI_INVALID_RESPONSE`
+- 经统一 AI Runtime 调用当前激活 Provider（见 §2.5）；默认火山方舟保持 Responses API `json_schema`（strict）、`thinking: { type: "disabled" }`、`store: false`，不新建第二套客户端
+- 运行时清洗：字符串字段 trim、空项丢弃、枚举值原样保留；守卫校验失败经一次修复仍不通过时抛出 `INVALID_STRUCTURED_OUTPUT`
 - 失败时只写 `lastRun`（stage `product_analysis`、failed），不动 `clarification` 与已有 `productAnalysis`，前序数据不丢失，可手动重试
 
 ## 6. 节点 4：MVP Scoping（已实现）
@@ -249,7 +270,7 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 ```
 
 - Product Analysis 是最主要依据；仅在核对事实时读取 Clarified Context、Idea Understanding 与 rawIdea
-- Route Handler 强制校验 `clarification.clarifiedContext` 与 `productAnalysis` 非空，缺失时返回 `AI_BAD_REQUEST`
+- Route Handler 强制校验 `clarification.clarifiedContext` 与 `productAnalysis` 非空，缺失时返回 `BAD_CONFIGURATION`
 
 ### 6.3 事实边界（Prompt 强制约束）
 
@@ -315,8 +336,8 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 ### 6.5 调用与校验
 
 - 端点：`POST /api/ai/scope/mvp`
-- 继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；复用现有 AI Client（`scopeMvp()`），不新建第二套客户端
-- 运行时清洗：字符串字段 trim、空项丢弃、枚举值原样保留；守卫 `isMvpScopingResult` 校验失败抛出 `AI_INVALID_RESPONSE`
+- 经统一 AI Runtime 调用当前激活 Provider（见 §2.5）；默认火山方舟保持 Responses API `json_schema`（strict）、`thinking: { type: "disabled" }`、`store: false`，复用现有 AI Client（`scopeMvp()`），不新建第二套客户端
+- 运行时清洗：字符串字段 trim、空项丢弃、枚举值原样保留；守卫 `isMvpScopingResult` 校验失败经一次修复仍不通过时抛出 `INVALID_STRUCTURED_OUTPUT`
 - 失败时只写 `lastRun`（stage `mvp_scoping`、failed），不动前三阶段产物，可手动重试
 
 ## 7. 节点 5：Execution Planning（已实现）
@@ -341,7 +362,7 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 
 - 输入优先级：MVP Scoping → Product Analysis → Clarified Context → rawIdea
 - Prompt 显式传入 MVP Scoping 的 `mustHave` / `shouldDefer` / `explicitlyOutOfScope` 三段
-- Route Handler 强制校验 `clarification.clarifiedContext`、`productAnalysis`、`mvpScoping` 非空，缺失时返回 `AI_BAD_REQUEST`
+- Route Handler 强制校验 `clarification.clarifiedContext`、`productAnalysis`、`mvpScoping` 非空，缺失时返回 `BAD_CONFIGURATION`
 
 ### 7.3 范围冻结（Prompt 最高优先级）
 
@@ -423,9 +444,9 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 ### 7.5 调用与校验
 
 - 端点：`POST /api/ai/plan/execution`
-- 继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；复用现有 AI Client（`planExecution()`），不新建第二套客户端、不切换模型
-- **节点级超时 180000ms（`EXECUTION_PLANNING_TIMEOUT_MS`）**：真实验证该节点耗时约 93～126s，统一默认 120s 边界过近；仅本节点放宽到 180s，其他节点（含 Final Review）继续使用默认 `REQUEST_TIMEOUT_MS` 120000ms。超时由 AI Client 的动作级 `timeoutMs` 覆盖实现，不做全局放宽，不引入异步队列 / 后台任务 / streaming
-- 运行时清洗：字符串字段 trim、空项丢弃、枚举值（type / effort / impact）与布尔值（needed / required / readyForFinalReview）原样保留；守卫 `isExecutionPlanningResult` 校验失败抛出 `AI_INVALID_RESPONSE`
+- 经统一 AI Runtime 调用当前激活 Provider（见 §2.5）；默认火山方舟保持 Responses API `json_schema`（strict）、`thinking: { type: "disabled" }`、`store: false`，复用现有 AI Client（`planExecution()`），不新建第二套客户端、不做多模型自动路由
+- **节点级超时 180000ms（`EXECUTION_PLANNING_TIMEOUT_MS`）**：真实验证该节点耗时约 93～126s，统一默认 120s 边界过近；仅本节点放宽到 180s，其他节点（含 Final Review）继续使用默认 `REQUEST_TIMEOUT_MS` 120000ms。超时由 AI Client 的动作级 `timeoutMs` 经 Adapter 透传实现，不做全局放宽，不引入异步队列 / 后台任务 / streaming
+- 运行时清洗：字符串字段 trim、空项丢弃、枚举值（type / effort / impact）与布尔值（needed / required / readyForFinalReview）原样保留；守卫 `isExecutionPlanningResult` 校验失败经一次修复仍不通过时抛出 `INVALID_STRUCTURED_OUTPUT`
 - 成功后写入 Project 可选字段 `executionPlanning: { result, completedAt }`，`status` 保持 `"scoped"`（不新增 ProjectStatus），并写 `lastRun`（stage `execution_planning`、succeeded、记录 durationMs）
 - 失败时只写 `lastRun`（stage `execution_planning`、failed），不动前四阶段产物与已有 `executionPlanning`，可手动重试
 
@@ -442,8 +463,8 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 
 - 触发：**仅由用户在 Execution Planning 结果页手动点击「检查完整立项方案」启动**，不挂任何自动 effect；完成后刷新直接显示结果、绝不重新调用模型
 - 输入：`rawIdea`、`ideaUnderstanding`、`clarification`（含 `clarifiedContext`）、`productAnalysis`、`mvpScoping`、`executionPlanning`
-- 缺少 Execution Planning（或 Clarified Context）时返回可读中文错误
-- 端点：`POST /api/ai/review/final`；继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；超时使用默认 120s，不复用 Execution Planning 的 180s
+- 缺少 Execution Planning（或 Clarified Context）时返回可读中文错误（`BAD_CONFIGURATION`）
+- 端点：`POST /api/ai/review/final`；经统一 AI Runtime 调用当前激活 Provider（见 §2.5），默认火山方舟保持 Responses API `json_schema`（strict）、`thinking: { type: "disabled" }`、`store: false`；超时使用默认 120s，不复用 Execution Planning 的 180s
 
 ### 8.3 否定语境区分（Prompt 强制约束）
 
@@ -500,7 +521,7 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 
 ### 8.5 调用、校验与恢复
 
-- AI Client `reviewFinal()` 复用现有客户端，不新建第二套；运行时做 trim、空项丢弃、枚举校验与数量截断；守卫 `isFinalReviewResult` 校验失败抛出 `AI_INVALID_RESPONSE`
+- AI Client `reviewFinal()` 复用统一 AI Runtime，不新建第二套；运行时做 trim、空项丢弃、枚举校验与数量截断；守卫 `isFinalReviewResult` 校验失败经一次修复仍不通过时抛出 `INVALID_STRUCTURED_OUTPUT`
 - 成功后写入 Project 可选字段 `finalReview: { result, completedAt }`，`status` 保持 `"scoped"`（不新增 ProjectStatus），并写 `lastRun`（stage `final_review`、succeeded、记录 durationMs）
 - 失败时只写 `lastRun`（stage `final_review`、failed），**保留全部前序结果（含 Execution Planning）**，可手动重试；刷新后失败态不自动重试
 - 导航不新增第六步：Final Review 仍归属左侧第五阶段视图，运行态只在主区域展示审计动作，不展示思维链

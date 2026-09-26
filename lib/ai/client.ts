@@ -1,12 +1,11 @@
-// 服务端 AI Client：通过 Volcengine Ark Agent Plan 的 OpenAI Responses
-// 兼容接口（POST {baseUrl}/responses）调用豆包模型。
+// 服务端 AI Client：六个工作流节点（七个模型动作）的业务编排层。
+// 只依赖 AI Runtime（lib/ai/providers），不感知任何具体厂商协议。
 // 仅在 Route Handler（服务端）中被引用，API Key 不做任何持久化。
 
 import {
   EXECUTION_PLANNING_TIMEOUT_MS,
   REQUEST_TIMEOUT_MS,
 } from "./config";
-import { AiError, normalizeHttpError } from "./errors";
 import {
   CLARIFIED_CONTEXT_JSON_SCHEMA,
   CLARIFICATION_QUESTIONS_JSON_SCHEMA,
@@ -39,6 +38,8 @@ import {
   buildMvpScopingPrompt,
   buildProductAnalysisPrompt,
 } from "./prompts";
+import { generateStructured, testConnection as runtimeTest } from "./providers";
+import { AiError } from "./errors";
 import type {
   ClarificationAnswer,
   ClarificationQuestions,
@@ -48,89 +49,72 @@ import type {
   ExecutionPlanningResult,
   FinalReviewResult,
   IdeaUnderstanding,
+  ModelConfig,
   MvpScopingResult,
   ProductAnalysisResult,
+  TestConnectionResult,
 } from "@/lib/types";
 
-interface CallParams {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
+interface TimedResult<T> {
+  result: T;
+  latencyMs: number;
 }
 
-interface ResponsesApiResponse {
-  output?: Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-  }>;
-  output_text?: string;
-}
-
-/** 连接测试：发起一次最小结构化请求，返回耗时（毫秒） */
-export async function testConnection(params: CallParams): Promise<number> {
-  const start = Date.now();
-  await callResponses({
-    ...params,
-    systemPrompt: "仅做连通性验证。",
-    userPrompt: "ping",
-    formatName: "connection_test",
-    formatDescription: "连通性验证。",
-    jsonSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: { ok: { type: "boolean" } },
-      required: ["ok"],
-    },
-  });
-  return Date.now() - start;
+/** 连接测试：完整链路（可达 / Key / 模型 / 结构化 {ok:true}） */
+export async function testConnection(
+  config: ModelConfig
+): Promise<TestConnectionResult> {
+  const { latencyMs } = await runtimeTest(config);
+  return {
+    providerId: config.providerId,
+    modelId: config.modelId,
+    latencyMs,
+  };
 }
 
 /** Idea Understanding 节点 */
-export async function understandIdea(
-  params: CallParams & { rawIdea: string }
-): Promise<{ result: IdeaUnderstanding; latencyMs: number }> {
-  const start = Date.now();
-  const text = await callResponses({
-    apiKey: params.apiKey,
-    baseUrl: params.baseUrl,
-    model: params.model,
-    systemPrompt: IDEA_UNDERSTANDING_SYSTEM_PROMPT,
-    userPrompt: buildIdeaUnderstandingUserPrompt(params.rawIdea),
-    formatName: "idea_understanding",
-    formatDescription:
-      "产品想法首次理解的结构化结果，包含目标用户、问题、场景、约束、假设与信息缺口。",
+export async function understandIdea(args: {
+  config: ModelConfig;
+  rawIdea: string;
+}): Promise<TimedResult<IdeaUnderstanding>> {
+  const { result, latencyMs } = await generateStructured({
+    config: args.config,
+    system: IDEA_UNDERSTANDING_SYSTEM_PROMPT,
+    user: buildIdeaUnderstandingUserPrompt(args.rawIdea),
     jsonSchema: IDEA_UNDERSTANDING_JSON_SCHEMA,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    guard: isIdeaUnderstanding,
   });
-  const result = parseStructuredJson(text);
-  return { result, latencyMs: Date.now() - start };
+  const cleaned: IdeaUnderstanding = {
+    ...result,
+    // 清理字符串数组中的空白项，保证前端展示质量
+    targetUsers: cleanArray(result.targetUsers),
+    coreProblems: cleanArray(result.coreProblems),
+    primaryScenarios: cleanArray(result.primaryScenarios),
+    knownConstraints: cleanArray(result.knownConstraints),
+    assumptions: cleanArray(result.assumptions),
+    missingInformation: cleanArray(result.missingInformation),
+  };
+  return { result: cleaned, latencyMs };
 }
 
 /** Clarification Question Generation 节点 */
-export async function generateClarificationQuestions(
-  params: CallParams & {
-    rawIdea: string;
-    ideaUnderstanding: IdeaUnderstanding;
-  }
-): Promise<{ result: ClarificationQuestions; latencyMs: number }> {
-  const start = Date.now();
-  const text = await callResponses({
-    apiKey: params.apiKey,
-    baseUrl: params.baseUrl,
-    model: params.model,
-    systemPrompt: CLARIFICATION_QUESTIONS_SYSTEM_PROMPT,
-    userPrompt: buildClarificationQuestionsPrompt({
-      rawIdea: params.rawIdea,
-      ideaUnderstanding: params.ideaUnderstanding,
+export async function generateClarificationQuestions(args: {
+  config: ModelConfig;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+}): Promise<TimedResult<ClarificationQuestions>> {
+  const { result: parsed, latencyMs } = await generateStructured({
+    config: args.config,
+    system: CLARIFICATION_QUESTIONS_SYSTEM_PROMPT,
+    user: buildClarificationQuestionsPrompt({
+      rawIdea: args.rawIdea,
+      ideaUnderstanding: args.ideaUnderstanding,
     }),
-    formatName: "clarification_questions",
-    formatDescription:
-      "信息补全问题生成结果：是否需要澄清、原因与少量高价值澄清问题。",
     jsonSchema: CLARIFICATION_QUESTIONS_JSON_SCHEMA,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    guard: isClarificationQuestions,
   });
-  const parsed = parseJson(text);
-  if (!isClarificationQuestions(parsed)) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
   const result: ClarificationQuestions = {
     clarificationNeeded: parsed.clarificationNeeded,
     reason: parsed.reason.trim(),
@@ -148,41 +132,32 @@ export async function generateClarificationQuestions(
       })),
   };
   if (result.clarificationNeeded && result.questions.length === 0) {
-    throw new AiError("AI_INVALID_RESPONSE");
+    throw new AiError("INVALID_STRUCTURED_OUTPUT");
   }
-  return { result, latencyMs: Date.now() - start };
+  return { result, latencyMs };
 }
 
 /** Clarification Synthesis 节点 */
-export async function synthesizeClarification(
-  params: CallParams & {
-    rawIdea: string;
-    ideaUnderstanding: IdeaUnderstanding;
-    questions: ClarificationQuestion[];
-    answers: ClarificationAnswer[];
-  }
-): Promise<{ result: ClarifiedContext; latencyMs: number }> {
-  const start = Date.now();
-  const text = await callResponses({
-    apiKey: params.apiKey,
-    baseUrl: params.baseUrl,
-    model: params.model,
-    systemPrompt: CLARIFICATION_SYNTHESIS_SYSTEM_PROMPT,
-    userPrompt: buildClarificationSynthesisPrompt({
-      rawIdea: params.rawIdea,
-      ideaUnderstanding: params.ideaUnderstanding,
-      questions: params.questions,
-      answers: params.answers,
+export async function synthesizeClarification(args: {
+  config: ModelConfig;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  questions: ClarificationQuestion[];
+  answers: ClarificationAnswer[];
+}): Promise<TimedResult<ClarifiedContext>> {
+  const { result: parsed, latencyMs } = await generateStructured({
+    config: args.config,
+    system: CLARIFICATION_SYNTHESIS_SYSTEM_PROMPT,
+    user: buildClarificationSynthesisPrompt({
+      rawIdea: args.rawIdea,
+      ideaUnderstanding: args.ideaUnderstanding,
+      questions: args.questions,
+      answers: args.answers,
     }),
-    formatName: "clarified_context",
-    formatDescription:
-      "信息补全整理结果：稳定的产品上下文，严格区分事实、决策、假设与未知。",
     jsonSchema: CLARIFIED_CONTEXT_JSON_SCHEMA,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    guard: isClarifiedContext,
   });
-  const parsed = parseJson(text);
-  if (!isClarifiedContext(parsed)) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
   const result: ClarifiedContext = {
     ...parsed,
     productName: parsed.productName.trim(),
@@ -197,37 +172,28 @@ export async function synthesizeClarification(
     remainingAssumptions: cleanArray(parsed.remainingAssumptions),
     remainingUnknowns: cleanArray(parsed.remainingUnknowns),
   };
-  return { result, latencyMs: Date.now() - start };
+  return { result, latencyMs };
 }
 
 /** Product Analysis 节点 */
-export async function analyzeProduct(
-  params: CallParams & {
-    rawIdea: string;
-    ideaUnderstanding: IdeaUnderstanding;
-    clarification: ClarificationState;
-  }
-): Promise<{ result: ProductAnalysisResult; latencyMs: number }> {
-  const start = Date.now();
-  const text = await callResponses({
-    apiKey: params.apiKey,
-    baseUrl: params.baseUrl,
-    model: params.model,
-    systemPrompt: PRODUCT_ANALYSIS_SYSTEM_PROMPT,
-    userPrompt: buildProductAnalysisPrompt({
-      rawIdea: params.rawIdea,
-      ideaUnderstanding: params.ideaUnderstanding,
-      clarification: params.clarification,
+export async function analyzeProduct(args: {
+  config: ModelConfig;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+}): Promise<TimedResult<ProductAnalysisResult>> {
+  const { result: parsed, latencyMs } = await generateStructured({
+    config: args.config,
+    system: PRODUCT_ANALYSIS_SYSTEM_PROMPT,
+    user: buildProductAnalysisPrompt({
+      rawIdea: args.rawIdea,
+      ideaUnderstanding: args.ideaUnderstanding,
+      clarification: args.clarification,
     }),
-    formatName: "product_analysis",
-    formatDescription:
-      "产品分析结构化结果：产品定义、核心用户与场景、问题分析、替代方式、价值主张、关键假设、风险与 MVP 收敛关注点。",
     jsonSchema: PRODUCT_ANALYSIS_JSON_SCHEMA,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    guard: isProductAnalysisResult,
   });
-  const parsed = parseJson(text);
-  if (!isProductAnalysisResult(parsed)) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
   const result: ProductAnalysisResult = {
     ...parsed,
     productDefinition: {
@@ -282,39 +248,30 @@ export async function analyzeProduct(
       readyForMvpScoping: parsed.analysisSummary.readyForMvpScoping,
     },
   };
-  return { result, latencyMs: Date.now() - start };
+  return { result, latencyMs };
 }
 
 /** MVP Scoping 节点 */
-export async function scopeMvp(
-  params: CallParams & {
-    rawIdea: string;
-    ideaUnderstanding: IdeaUnderstanding;
-    clarification: ClarificationState;
-    productAnalysis: ProductAnalysisResult;
-  }
-): Promise<{ result: MvpScopingResult; latencyMs: number }> {
-  const start = Date.now();
-  const text = await callResponses({
-    apiKey: params.apiKey,
-    baseUrl: params.baseUrl,
-    model: params.model,
-    systemPrompt: MVP_SCOPING_SYSTEM_PROMPT,
-    userPrompt: buildMvpScopingPrompt({
-      rawIdea: params.rawIdea,
-      ideaUnderstanding: params.ideaUnderstanding,
-      clarification: params.clarification,
-      productAnalysis: params.productAnalysis,
+export async function scopeMvp(args: {
+  config: ModelConfig;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+}): Promise<TimedResult<MvpScopingResult>> {
+  const { result: parsed, latencyMs } = await generateStructured({
+    config: args.config,
+    system: MVP_SCOPING_SYSTEM_PROMPT,
+    user: buildMvpScopingPrompt({
+      rawIdea: args.rawIdea,
+      ideaUnderstanding: args.ideaUnderstanding,
+      clarification: args.clarification,
+      productAnalysis: args.productAnalysis,
     }),
-    formatName: "mvp_scoping",
-    formatDescription:
-      "MVP 范围收敛结构化结果：第一版定义、首要验证目标、最小完整闭环、必须做、暂缓做、明确不做、范围约束、MVP 风险、验证计划与范围总结。",
     jsonSchema: MVP_SCOPING_JSON_SCHEMA,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    guard: isMvpScopingResult,
   });
-  const parsed = parseJson(text);
-  if (!isMvpScopingResult(parsed)) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
   const result: MvpScopingResult = {
     mvpDefinition: {
       goal: parsed.mvpDefinition.goal.trim(),
@@ -364,42 +321,32 @@ export async function scopeMvp(
         parsed.scopeSummary.readyForExecutionPlanning,
     },
   };
-  return { result, latencyMs: Date.now() - start };
+  return { result, latencyMs };
 }
 
-/** Execution Planning 节点 */
-export async function planExecution(
-  params: CallParams & {
-    rawIdea: string;
-    ideaUnderstanding: IdeaUnderstanding;
-    clarification: ClarificationState;
-    productAnalysis: ProductAnalysisResult;
-    mvpScoping: MvpScopingResult;
-  }
-): Promise<{ result: ExecutionPlanningResult; latencyMs: number }> {
-  const start = Date.now();
-  const text = await callResponses({
-    apiKey: params.apiKey,
-    baseUrl: params.baseUrl,
-    model: params.model,
-    systemPrompt: EXECUTION_PLANNING_SYSTEM_PROMPT,
-    userPrompt: buildExecutionPlanningPrompt({
-      rawIdea: params.rawIdea,
-      ideaUnderstanding: params.ideaUnderstanding,
-      clarification: params.clarification,
-      productAnalysis: params.productAnalysis,
-      mvpScoping: params.mvpScoping,
+/** Execution Planning 节点（节点级超时 180s） */
+export async function planExecution(args: {
+  config: ModelConfig;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+  mvpScoping: MvpScopingResult;
+}): Promise<TimedResult<ExecutionPlanningResult>> {
+  const { result: parsed, latencyMs } = await generateStructured({
+    config: args.config,
+    system: EXECUTION_PLANNING_SYSTEM_PROMPT,
+    user: buildExecutionPlanningPrompt({
+      rawIdea: args.rawIdea,
+      ideaUnderstanding: args.ideaUnderstanding,
+      clarification: args.clarification,
+      productAnalysis: args.productAnalysis,
+      mvpScoping: args.mvpScoping,
     }),
-    formatName: "execution_planning",
-    formatDescription:
-      "执行方案规划结构化结果：执行定义、产品结构、轻量技术方案、核心数据对象、里程碑、可执行任务、验证节点、执行风险与收尾总结。",
     jsonSchema: EXECUTION_PLANNING_JSON_SCHEMA,
     timeoutMs: EXECUTION_PLANNING_TIMEOUT_MS,
+    guard: isExecutionPlanningResult,
   });
-  const parsed = parseJson(text);
-  if (!isExecutionPlanningResult(parsed)) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
   const result: ExecutionPlanningResult = {
     executionDefinition: {
       goal: parsed.executionDefinition.goal.trim(),
@@ -483,43 +430,34 @@ export async function planExecution(
         parsed.executionSummary.readyForFinalReview,
     },
   };
-  return { result, latencyMs: Date.now() - start };
+  return { result, latencyMs };
 }
 
 /** Final Review 节点（只读一致性审计，使用默认超时） */
-export async function reviewFinal(
-  params: CallParams & {
-    rawIdea: string;
-    ideaUnderstanding: IdeaUnderstanding;
-    clarification: ClarificationState;
-    productAnalysis: ProductAnalysisResult;
-    mvpScoping: MvpScopingResult;
-    executionPlanning: ExecutionPlanningResult;
-  }
-): Promise<{ result: FinalReviewResult; latencyMs: number }> {
-  const start = Date.now();
-  const text = await callResponses({
-    apiKey: params.apiKey,
-    baseUrl: params.baseUrl,
-    model: params.model,
-    systemPrompt: FINAL_REVIEW_SYSTEM_PROMPT,
-    userPrompt: buildFinalReviewPrompt({
-      rawIdea: params.rawIdea,
-      ideaUnderstanding: params.ideaUnderstanding,
-      clarification: params.clarification,
-      productAnalysis: params.productAnalysis,
-      mvpScoping: params.mvpScoping,
-      executionPlanning: params.executionPlanning,
+export async function reviewFinal(args: {
+  config: ModelConfig;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+  mvpScoping: MvpScopingResult;
+  executionPlanning: ExecutionPlanningResult;
+}): Promise<TimedResult<FinalReviewResult>> {
+  const { result: parsed, latencyMs } = await generateStructured({
+    config: args.config,
+    system: FINAL_REVIEW_SYSTEM_PROMPT,
+    user: buildFinalReviewPrompt({
+      rawIdea: args.rawIdea,
+      ideaUnderstanding: args.ideaUnderstanding,
+      clarification: args.clarification,
+      productAnalysis: args.productAnalysis,
+      mvpScoping: args.mvpScoping,
+      executionPlanning: args.executionPlanning,
     }),
-    formatName: "final_review",
-    formatDescription:
-      "最终一致性审查结果：总体结论、链路一致性检查、范围完整性、事实完整性、执行准备度、有限调整建议与最终行动总结。",
     jsonSchema: FINAL_REVIEW_JSON_SCHEMA,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    guard: isFinalReviewResult,
   });
-  const parsed = parseJson(text);
-  if (!isFinalReviewResult(parsed)) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
   const result: FinalReviewResult = {
     verdict: {
       status: parsed.verdict.status,
@@ -563,153 +501,9 @@ export async function reviewFinal(
       keepInMind: cleanArray(parsed.finalSummary.keepInMind).slice(0, 4),
     },
   };
-  return { result, latencyMs: Date.now() - start };
-}
-
-async function callResponses(args: {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  systemPrompt: string;
-  userPrompt: string;
-  formatName: string;
-  formatDescription: string;
-  jsonSchema: Record<string, unknown>;
-  /** 可选节点级超时覆盖；不传时使用 REQUEST_TIMEOUT_MS */
-  timeoutMs?: number;
-}): Promise<string> {
-  const endpoint = joinUrl(args.baseUrl, "/responses");
-
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    args.timeoutMs ?? REQUEST_TIMEOUT_MS
-  );
-
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${args.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: args.model,
-        store: false,
-        thinking: { type: "disabled" },
-        text: {
-          format: {
-            type: "json_schema",
-            name: args.formatName,
-            description: args.formatDescription,
-            strict: true,
-            schema: args.jsonSchema,
-          },
-        },
-        input: [
-          {
-            role: "system",
-            content: args.systemPrompt,
-          },
-          {
-            role: "user",
-            content: args.userPrompt,
-          },
-        ],
-      }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    throw mapFetchError(error);
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const body: unknown = await response
-    .json()
-    .catch(() => null);
-
-  if (!response.ok) {
-    throw normalizeHttpError(response.status, body);
-  }
-
-  const text = extractOutputText(body);
-  if (text === null) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
-  return text;
-}
-
-/** 从 Responses API 响应中提取模型输出文本（忽略 reasoning 项，不展示思维链） */
-function extractOutputText(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
-  const response = body as ResponsesApiResponse;
-
-  if (typeof response.output_text === "string") {
-    return response.output_text;
-  }
-
-  if (!Array.isArray(response.output)) return null;
-  const parts: string[] = [];
-  for (const item of response.output) {
-    if (item.type !== "message" || !Array.isArray(item.content)) continue;
-    for (const content of item.content) {
-      if (content.type === "output_text" && typeof content.text === "string") {
-        parts.push(content.text);
-      }
-    }
-  }
-  return parts.length > 0 ? parts.join("\n") : null;
-}
-
-/** 解析模型返回的结构化 JSON：容忍 ```json 包裹，失败归一化为解析错误 */
-function parseJson(text: string): unknown {
-  const cleaned = stripCodeFence(text).trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    throw new AiError("AI_PARSE_ERROR");
-  }
+  return { result, latencyMs };
 }
 
 function cleanArray(items: string[]): string[] {
   return items.map((s) => s.trim()).filter(Boolean);
-}
-
-/** Idea Understanding 专用解析：校验 + 清理字符串数组 */
-function parseStructuredJson(text: string): IdeaUnderstanding {
-  const parsed = parseJson(text);
-  if (!isIdeaUnderstanding(parsed)) {
-    throw new AiError("AI_INVALID_RESPONSE");
-  }
-  return {
-    ...parsed,
-    // 清理字符串数组中的空白项，保证前端展示质量
-    targetUsers: cleanArray(parsed.targetUsers),
-    coreProblems: cleanArray(parsed.coreProblems),
-    primaryScenarios: cleanArray(parsed.primaryScenarios),
-    knownConstraints: cleanArray(parsed.knownConstraints),
-    assumptions: cleanArray(parsed.assumptions),
-    missingInformation: cleanArray(parsed.missingInformation),
-  };
-}
-
-function stripCodeFence(text: string): string {
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(text.trim());
-  return fenced ? fenced[1] : text;
-}
-
-function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}${path}`;
-}
-
-function mapFetchError(error: unknown): AiError {
-  if (error instanceof DOMException && error.name === "AbortError") {
-    return new AiError("AI_TIMEOUT");
-  }
-  if (error instanceof Error && error.name === "AbortError") {
-    return new AiError("AI_TIMEOUT");
-  }
-  return new AiError("AI_NETWORK_ERROR");
 }

@@ -1,6 +1,7 @@
 import { generateClarificationQuestions } from "@/lib/ai/client";
 import { AiError } from "@/lib/ai/errors";
 import { errorResponse } from "@/lib/ai/http";
+import { validateModelConfig } from "@/lib/ai/server/validate-config";
 import { isIdeaUnderstanding } from "@/lib/ai/schemas";
 import type {
   ApiResponse,
@@ -13,26 +14,22 @@ export async function POST(request: Request): Promise<Response> {
   try {
     parsed = await request.json();
   } catch {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
 
   if (!isClarifyQuestionsRequest(parsed)) {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
-  }
-  if (!parsed.apiKey.trim()) {
-    return errorResponse(new AiError("AI_MISSING_KEY"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
   if (!parsed.rawIdea.trim()) {
     return errorResponse(
-      new AiError("AI_BAD_REQUEST", "缺少产品想法，无法生成澄清问题。")
+      new AiError("BAD_CONFIGURATION", "缺少产品想法，无法生成澄清问题。")
     );
   }
 
   try {
+    const config = await validateModelConfig(parsed.modelConfig);
     const { result, latencyMs } = await generateClarificationQuestions({
-      apiKey: parsed.apiKey,
-      baseUrl: parsed.baseUrl,
-      model: parsed.model,
+      config,
       rawIdea: parsed.rawIdea,
       ideaUnderstanding: parsed.ideaUnderstanding,
     });
@@ -54,9 +51,8 @@ function isClarifyQuestionsRequest(
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
   return (
-    typeof candidate.apiKey === "string" &&
-    typeof candidate.baseUrl === "string" &&
-    typeof candidate.model === "string" &&
+    typeof candidate.modelConfig === "object" &&
+    candidate.modelConfig !== null &&
     typeof candidate.rawIdea === "string" &&
     isIdeaUnderstanding(candidate.ideaUnderstanding)
   );

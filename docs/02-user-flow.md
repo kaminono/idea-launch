@@ -31,41 +31,44 @@
 - Hero 主标题：**把一个想法，变成可以开始做的产品**
 - 辅助说明文字
 - 大型产品想法输入框（textarea）
-- 轻量场景标签：AI 应用 / SaaS / 开发者工具 / 效率工具
+- 产品想法模板（Product Idea Templates）：AI 应用 / SaaS / 开发者工具 / 效率工具，每个标签带一行一句话说明
 - 主按钮：开始分析
 
 **用户操作：**
 
 - 在输入框中填写产品想法
-- 可点击场景标签（仅作为轻量辅助，不强制）
+- 可点击模板标签：点击后把该模板的示例 Prompt 填入输入框（仍可自由编辑）；再次点击或手动编辑导致内容偏离模板时自动取消选中态
+- 模板只负责填入文案，不会自动开始分析
 - 点击「开始分析」
 
 **系统行为：**
 
 - 校验输入非空（空输入时在页面内提示，不使用 alert）
-- 检查是否已配置 API Key：
+- 检查当前激活 Provider 是否已配置 API Key：
   - 已配置 → 创建本地 Project，进入 Workspace 并发起 Idea Understanding
   - 未配置 → 打开设置弹窗，引导填写 API Key，保留已输入的想法内容
+- 模板标签支持键盘操作（focus-visible 可见）与 aria-pressed 选中语义
 
-## 2. 检查模型配置（设置弹窗）
+## 2. 检查模型配置（设置弹窗，Settings V2）
 
-**用户看见：**
+设置弹窗自上而下四层：
 
-- API Key 密码输入框（支持显示 / 隐藏）
-- 模型：豆包 Seed 2.1 Pro（`doubao-seed-2.1-pro`）
-- API 地址（默认 `https://ark.cn-beijing.volces.com/api/plan/v3`，可编辑，可恢复默认）
-- 「测试连接」按钮及状态（测试中 / 成功 / 失败）
+1. **当前模型状态**：展示当前激活的 Provider 名称与模型 ID；未配置 Key 时明确提示
+2. **Provider 选择**：紧凑 Radio 列表（无品牌 Logo）——火山方舟（豆包，默认）/ OpenAI / Anthropic / Google Gemini / 自定义（OpenAI 兼容，Qwen、DeepSeek、Kimi 等走此项）；切换 Provider 不清空其他 Provider 已保存的配置
+3. **模型配置**：API Key（密码框，支持显示 / 隐藏）+ 模型 ID（可编辑输入框，附少量推荐模型 datalist）为主；Base URL 与 Protocol 收在「高级设置」折叠区，仅自定义 Provider 允许修改
+4. **连接验证**：「测试连接」按钮及状态（测试中 / 成功 / 失败）
 
 **用户操作：**
 
-- 粘贴 API Key → 保存（写入 localStorage）
+- 选择 Provider，粘贴对应 API Key，必要时调整模型 ID → 保存（写入 localStorage Settings V2）
 - 点击测试连接验证可用性
 
 **系统行为：**
 
-- 发起真实 Responses API 请求
-- 成功：展示「已连接 / 模型名 / 请求耗时」
-- 失败：展示经过脱敏处理的用户可读错误；任何情况下不展示 API Key
+- 发起真实端到端请求，依次验证：API 地址可达、API Key 有效、模型可用、支持结构化输出（要求模型返回 `{"ok":true}` 并做运行时校验）
+- 成功：展示「Provider 名 · 模型 ID · 请求耗时」
+- 失败：展示经过脱敏处理的用户可读错误（统一错误码中文文案）；任何情况下不展示 API Key、请求头或请求体
+- 首次在新版本中打开设置时，若本地只有 V1 设置，自动惰性迁移为 V2（映射到火山方舟配置并设为激活），V1 原始数据保留不删
 
 ## 3. 首次理解（Workspace：`/project/[id]`，节点：产品想法）
 

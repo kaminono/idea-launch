@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "idea-launch · 把想法变成可以开始做的产品",
+  title: "Idea Launch · 把想法变成可以开始做的产品",
   description:
-    "基于豆包大模型的独立开发立项助手，帮助你理解问题、收敛范围，逐步形成可执行的产品方案。",
+    "独立开发立项助手，通过 AI 分阶段理解、补全与分析，帮助你收敛范围，逐步形成可执行的产品方案。",
+  icons: {
+    icon: [{ url: "/brand-mark.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

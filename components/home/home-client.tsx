@@ -2,16 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, KeyRound, Loader2 } from "lucide-react";
+import { ArrowUpRight, Check, KeyRound, Loader2 } from "lucide-react";
 import { TopBar } from "@/components/layout/top-bar";
 import { SettingsModal } from "@/components/settings/settings-modal";
 import { HistoryDrawer } from "@/components/projects/history-drawer";
 import { saveProject } from "@/lib/storage";
 import { useHasApiKey } from "@/lib/client/use-settings";
 import { useHydrated } from "@/lib/client/use-hydrated";
+import { PRODUCT_TEMPLATES } from "@/lib/product-templates";
 import type { Project } from "@/lib/types";
-
-const SCENE_TAGS = ["AI 应用", "SaaS", "开发者工具", "效率工具"];
 
 const PLACEHOLDER =
   "我想做一个帮助开发者快速学习新技术的 AI 产品，希望一个人可以开发，后面考虑收费……";
@@ -25,6 +24,28 @@ export function HomeClient() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [inputError, setInputError] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    null
+  );
+
+  const handleIdeaChange = (value: string) => {
+    setRawIdea(value);
+    if (inputError) setInputError("");
+    // 内容明显偏离模板原文时自动取消选中（含重新清空）
+    setSelectedTemplateId((current) => {
+      if (!current) return current;
+      const selected = PRODUCT_TEMPLATES.find((t) => t.id === current);
+      return selected && value === selected.prompt ? current : null;
+    });
+  };
+
+  const handleSelectTemplate = (templateId: string) => {
+    const template = PRODUCT_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+    setSelectedTemplateId(templateId);
+    setRawIdea(template.prompt);
+    if (inputError) setInputError("");
+  };
 
   const handleStart = () => {
     if (submitting) return;
@@ -96,7 +117,7 @@ export function HomeClient() {
               变成<span className="text-brand">可以开始做</span>的产品
             </h1>
             <p className="mx-auto mt-6 max-w-[600px] text-[15px] leading-7 text-ink-secondary">
-              输入一个还没完全想清楚的产品想法，idea-launch
+              输入一个还没完全想清楚的产品想法，Idea Launch
               会帮助你理解问题、收敛范围，并逐步形成可以执行的产品方案。
             </p>
           </div>
@@ -110,30 +131,42 @@ export function HomeClient() {
             </div>
             <textarea
               value={rawIdea}
-              onChange={(event) => {
-                setRawIdea(event.target.value);
-                if (inputError) setInputError("");
-              }}
+              onChange={(event) => handleIdeaChange(event.target.value)}
               placeholder={PLACEHOLDER}
               rows={5}
               className="mt-3 min-h-[140px] w-full resize-none bg-transparent text-[15px] leading-7 text-ink outline-none placeholder:text-ink-muted"
             />
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {SCENE_TAGS.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() =>
-                    setRawIdea((prev) =>
-                      prev ? prev : `我想做一个${tag}方向的产品，`
-                    )
-                  }
-                  className="rounded-[8px] bg-surface-secondary px-2.5 py-1 text-xs text-ink-secondary transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
-                >
-                  {tag}
-                </button>
-              ))}
+            <div className="mt-3">
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">
+                试试这些想法
+              </p>
+              <div
+                role="group"
+                aria-label="产品想法模板"
+                className="mt-2 flex flex-wrap items-center gap-2"
+              >
+                {PRODUCT_TEMPLATES.map((template) => {
+                  const selected = selectedTemplateId === template.id;
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      aria-pressed={selected}
+                      title={template.description}
+                      onClick={() => handleSelectTemplate(template.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                        selected
+                          ? "border-brand/40 bg-brand-soft font-medium text-brand"
+                          : "border-transparent bg-surface-secondary text-ink-secondary hover:bg-brand-soft hover:text-brand"
+                      }`}
+                    >
+                      {selected && <Check size={12} aria-hidden="true" />}
+                      {template.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {inputError && (
@@ -150,7 +183,7 @@ export function HomeClient() {
               >
                 <KeyRound size={15} className="shrink-0" />
                 <span>
-                  尚未配置豆包 API Key，点击打开设置；你的想法不会丢失。
+                  尚未配置模型 API Key，点击打开设置；你的想法不会丢失。
                 </span>
               </button>
             )}

@@ -1,6 +1,7 @@
 import { testConnection } from "@/lib/ai/client";
 import { AiError } from "@/lib/ai/errors";
 import { errorResponse } from "@/lib/ai/http";
+import { validateModelConfig } from "@/lib/ai/server/validate-config";
 import type {
   ApiResponse,
   TestConnectionRequest,
@@ -12,26 +13,16 @@ export async function POST(request: Request): Promise<Response> {
   try {
     parsed = await request.json();
   } catch {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
 
   if (!isTestRequest(parsed)) {
-    return errorResponse(new AiError("AI_BAD_REQUEST"));
-  }
-  if (!parsed.apiKey.trim()) {
-    return errorResponse(new AiError("AI_MISSING_KEY"));
+    return errorResponse(new AiError("BAD_CONFIGURATION"));
   }
 
   try {
-    const latencyMs = await testConnection({
-      apiKey: parsed.apiKey,
-      baseUrl: parsed.baseUrl,
-      model: parsed.model,
-    });
-    const data: TestConnectionResult = {
-      model: parsed.model,
-      latencyMs,
-    };
+    const config = await validateModelConfig(parsed.modelConfig);
+    const data = await testConnection(config);
     return Response.json(
       { ok: true, data } satisfies ApiResponse<TestConnectionResult>
     );
@@ -42,10 +33,5 @@ export async function POST(request: Request): Promise<Response> {
 
 function isTestRequest(value: unknown): value is TestConnectionRequest {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.apiKey === "string" &&
-    typeof candidate.baseUrl === "string" &&
-    typeof candidate.model === "string"
-  );
+  return typeof (value as { modelConfig?: unknown }).modelConfig === "object";
 }

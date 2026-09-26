@@ -5,7 +5,7 @@ import type { AiErrorCode, ApiResponse } from "@/lib/types";
 
 export function errorResponse(error: unknown): Response {
   const aiError =
-    error instanceof AiError ? error : new AiError("AI_PROVIDER_ERROR");
+    error instanceof AiError ? error : new AiError("PROVIDER_UNAVAILABLE");
   const body: ApiResponse<never> = {
     ok: false,
     error: aiError.toRunError(),
@@ -15,14 +15,15 @@ export function errorResponse(error: unknown): Response {
 
 function errorStatus(code: AiErrorCode): number {
   switch (code) {
-    case "AI_MISSING_KEY":
-    case "AI_BAD_REQUEST":
+    case "BAD_CONFIGURATION":
       return 400;
-    case "AI_AUTH_ERROR":
+    case "INVALID_API_KEY":
       return 401;
-    case "AI_TIMEOUT":
+    case "TIMEOUT":
       return 504;
     default:
+      // MODEL_NOT_FOUND / RATE_LIMITED / INVALID_STRUCTURED_OUTPUT /
+      // PROVIDER_UNAVAILABLE 统一作为上游失败
       return 502;
   }
 }

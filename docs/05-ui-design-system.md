@@ -162,7 +162,7 @@ Token 以 `app/globals.css` 中的 `@theme inline` 为代码事实来源。
 2. English Label：英文阶段名
 3. 中文标题：阶段中文名
 4. 阶段目的：一句话说明本阶段要解决什么
-5. Model Badge：复用 `MODEL_OPTIONS[0].label`（「豆包 Seed 2.1 Pro」）+ 极小 Orange Dot；**禁止硬编码模型名**
+5. Model Badge：**动态徽标**，内容为当前激活 Provider 的 `badgePrefix`（Provider Registry）+ 间隔点 + `modelId`，配极小 Orange Dot；随设置中激活 Provider / 模型实时变化，**禁止硬编码任何模型名或品牌名**
 
 ### 3.7 状态与反馈
 
@@ -268,7 +268,8 @@ Token 以 `app/globals.css` 中的 `@theme inline` 为代码事实来源。
 - TopBar：Warm Paper 半透 + 底部 1px Border、高 60；左侧收敛轨迹 Brand Mark（抽象轨迹 / 节点，Orange + Aubergine，禁止火箭 / Sparkle / 机器人），右侧「历史项目」「设置」次按钮。
 - Hero 居中单栏，最大宽约 820：`.label-editorial` 眉题 + 64–76px 编辑式大标题（关键词用 Brand）+ 一段说明。
 - 轻抽象路径背景：Hero 后方静态 SVG 双路径（Brand / Aubergine 低透明）+ 少量节点圆点；纯静态，禁止 Canvas / 粒子 / 视频。
-- 大输入卡：Surface、圆角 16、描边；含 label + 字数（mono）+ textarea + 场景标签 + 右侧 Brand 主按钮「开始分析」。
+- 大输入卡：Surface、圆角 16、描边；含 label + 字数（mono）+ textarea + 产品想法模板（Product Idea Templates）+ 右侧 Brand 主按钮「开始分析」。
+- Product Idea Templates：四个可点击模板标签（AI 应用 / SaaS / 开发者工具 / 效率工具，配置于 `lib/product-templates.ts`，含 label + 一句话 description）；点击将模板 prompt 填入 textarea 并进入 selected 态（Brand 描边 / brand-soft / 勾选指示），用户可继续编辑；手动改动导致内容偏离模板时自动取消 selected；支持 `aria-pressed` 与键盘操作，hover / focus-visible / selected 样式齐备；**仅填入文本，不自动开始分析**。
 - 未配置 API Key：输入卡内 warning-soft 引导条，点击打开设置，想法保留。
 - 首屏高度内完成核心操作，不堆营销内容。
 
@@ -307,5 +308,5 @@ Token 以 `app/globals.css` 中的 `@theme inline` 为代码事实来源。
 - 过度 Bento Grid、圆角超过 24px、静态卡片重阴影
 - 用红色表达「暂缓 / 不做」等正常范围决策
 - 弹跳 / 炫光类动画与自动播放装饰
-- 硬编码模型名（必须复用 `MODEL_OPTIONS`）
+- 硬编码模型名 / 品牌名（必须从 Provider Registry 与当前激活 `modelConfig` 动态派生）
 - 使用 emoji 充当功能图标（图标统一使用 lucide-react 线性图标，16–20px，stroke 1.5–2）

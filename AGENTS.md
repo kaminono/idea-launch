@@ -14,9 +14,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## 项目目标
 
-idea-launch 是火山引擎 ADG 社区直播演示用的真实可运行 Web Demo：《基于豆包大模型的独立开发立项助手，把产品想法变成可执行方案》。
+idea-launch 是火山引擎 ADG 社区直播演示用的真实可运行 Web Demo：《独立开发立项助手，把产品想法变成可执行方案》。默认开箱 Provider 为火山方舟豆包（doubao-seed-evolving，经 Agent Plan / Responses API 调用），同时内置 Provider-agnostic 多模型运行时。
 
-帮助独立开发者把模糊的产品想法，经大模型分阶段理解、补充、分析、收敛，形成可进入设计与开发阶段的立项方案。
+帮助独立开发者把模糊的产品想法，经当前激活的大模型分阶段理解、补充、分析、收敛，形成可进入设计与开发阶段的立项方案。
 
 - 产品规格：[docs/01-product-spec.md](docs/01-product-spec.md)
 - 用户流程：[docs/02-user-flow.md](docs/02-user-flow.md)
@@ -30,8 +30,9 @@ idea-launch 是火山引擎 ADG 社区直播演示用的真实可运行 Web Demo
 - 分层：
   - `lib/types/`：核心领域类型，是数据契约的代码事实来源。
   - `lib/storage/`：localStorage 的唯一出入口，组件不得直接读写 localStorage。
-  - `lib/ai/`：`config.ts`（模型配置）、`schemas.ts`（JSON Schema 与运行时校验）、`prompts.ts`（Prompt 管理）、`errors.ts`（错误归一化）、`client.ts`（服务端转发调用）。
-  - `app/api/ai/`：Route Handler，只做转发与必要的数据整理。
+  - `lib/ai/`：`config.ts`（默认 Base URL / 默认模型 / 超时常量）、`schemas.ts`（JSON Schema 与运行时校验）、`prompts.ts`（Prompt 管理）、`errors.ts`（七码错误归一化）、`http.ts`（错误 HTTP 映射）、`client.ts`（业务编排，调用统一 Runtime）。
+  - `lib/ai/providers/`：Provider-agnostic AI Runtime——`types.ts`（ModelConfig / Adapter / SettingsV2 契约）、`registry.ts`（内置 Provider 定义）、`runtime.ts`（能力包装 / 结构化守卫 / 最多一次修复）、`adapters/`（四种 Protocol 的 Adapter）、`ssrf.ts`（Custom Base URL 防护）、`validate-config.ts`（请求期配置校验）。
+  - `app/api/ai/`：Route Handler，校验请求体（统一接收 `modelConfig`）与业务输入，只做必要数据整理与转发，**禁止复制 Provider 判断逻辑**。
   - UI 组件：不直接发起第三方模型请求，只调用本项目 Route Handler。
 - 只允许增加轻量依赖；禁止引入 Ant Design / MUI / Element / Chakra 等大型 UI Framework；图标统一使用 lucide-react。
 
@@ -43,13 +44,15 @@ idea-launch 是火山引擎 ADG 社区直播演示用的真实可运行 Web Demo
 
 ## LocalStorage 规则
 
-- 统一命名空间：`idea-launch:settings:v1`、`idea-launch:projects:v1`。
+- 统一命名空间：`idea-launch:settings:v2`（当前）、`idea-launch:settings:v1`（迁移来源，保留不删）、`idea-launch:projects:v1`。
 - 所有读写必须经过 `lib/storage/` 封装，必须处理：
   - SSR 环境不存在 localStorage；
   - JSON 解析失败 / 数据损坏（隔离损坏数据、重置为默认值，不能让页面崩溃）；
   - 数据版本（envelope `{ version, data }`）；
   - 默认值、刷新恢复、清空数据。
-- API Key 只允许存在于 settings 中，**禁止进入 Project 数据**。
+- Settings V2 结构：`activeProviderId` + `providerConfigs`（各 Provider 独立配置，切换不清空）。归一化时内置 Provider 只信任 apiKey/modelId，baseUrl/protocol 以 Registry 为准；custom 保留用户 baseUrl，protocol 走四值白名单。
+- V1→V2 惰性迁移：浏览器端发现 v2 缺失且 v1 存在时，映射为 volcengine 配置并写 v2，读回校验失败不启用；清空设置同时删除 V1+V2。
+- API Key 只允许存在于 settings（按 Provider 存储）中，**禁止进入 Project 数据**。
 
 ## API Key 安全规则
 
@@ -58,12 +61,21 @@ idea-launch 是火山引擎 ADG 社区直播演示用的真实可运行 Web Demo
 - 浏览器可将本次请求所需 API Key 临时发送到本机 Route Handler；请求结束后不得保存。
 - 任何面向用户的错误信息都必须脱敏，绝不回显请求头中的 Key。
 
-## 模型配置
+## 模型配置（Provider-agnostic AI Runtime）
 
-- Provider：Volcengine Ark Agent Plan。
-- Base URL：`https://ark.cn-beijing.volces.com/api/plan/v3`（集中常量管理，可在设置中编辑并恢复默认）。
-- Model：`doubao-seed-2.1-pro`（显示名「豆包 Seed 2.1 Pro」）。本阶段只支持这一个模型。
-- 优先使用 OpenAI Responses API 兼容方式（`POST {baseUrl}/responses`）调用，结构化输出使用 json_schema。
+- 一次只使用用户在设置中激活的**一个** Provider；禁止多模型自动路由。
+- 内置 Provider（Registry 统一定义，不硬编码品牌名到业务层）：
+  - `volcengine` 火山方舟（豆包，默认）：Protocol `openai-responses`，Base URL `https://ark.cn-beijing.volces.com/api/plan/v3`（集中常量，可恢复默认），默认模型 `doubao-seed-evolving`；保持 `store:false` + `thinking:{type:"disabled"}`，结构化 native（json_schema strict）。
+  - `openai`：`openai-responses`，native。
+  - `anthropic`：`anthropic-messages`，结构化 fallback（JSON-only Prompt）。
+  - `gemini`：`gemini-generate-content`，结构化 compatible（JSON mode）。
+  - `custom` 自定义（OpenAI 兼容）：`openai-chat-completions`，compatible；Qwen / DeepSeek / Kimi 等均走此项，不设专用 Adapter；仅 custom 可在高级设置修改 Base URL / Protocol。
+- 每个 Provider 仅提供少量 modelSuggestions，Model ID 可自由编辑。
+- 所有节点：业务 client → Runtime → Adapter（`testConnection()` / `generateStructured()` / `getCapabilities()`）；结构化输出无论能力级别都必须通过运行时 Schema 校验，失败**最多带错误反馈修复一次**，再失败抛 `INVALID_STRUCTURED_OUTPUT`。
+- 连接测试走完整链路（可达 / Key / Model / 最小结构化请求），成功只返回 Provider ID / Model ID / 耗时；不暴露 Key、Header、请求体。
+- 错误统一七码：INVALID_API_KEY / MODEL_NOT_FOUND / RATE_LIMITED / TIMEOUT / INVALID_STRUCTURED_OUTPUT / PROVIDER_UNAVAILABLE / BAD_CONFIGURATION；中文脱敏文案（HTTP 映射 400/401/504/502）。
+- 超时：Execution Planning 180000ms，其余节点 120000ms，动作级 `timeoutMs` 透传。
+- SSRF：Custom Base URL 仅允许 http/https；拒绝 localhost/127/::1（含 IPv4-mapped/compatible）/RFC1918/link-local/云 metadata/.local 等内部地址；域名经 DNS 解析后再拒私网。内置 Provider 不走该校验。
 
 ## AI Workflow 原则
 
