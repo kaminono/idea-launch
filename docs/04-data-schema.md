@@ -76,7 +76,7 @@ type ProjectStatus =
 - `understood`：Idea Understanding 成功并已保存（Clarification 未完成）
 - `clarified`：Clarification Synthesis 成功，Clarified Context 已保存
 - `analyzed`：Product Analysis 成功，分析结果已保存
-- `scoped`：MVP Scoping 成功，第一版范围已保存
+- `scoped`：MVP Scoping 成功，第一版范围已保存（Execution Planning 完成后 status 仍保持 `scoped`，执行方案由 `executionPlanning` 字段存在性派生）
 - `failed`：最近一次运行失败（保留错误，允许重试）
 
 ## 4. Idea Understanding
@@ -325,6 +325,202 @@ interface MvpScopingState {
 }
 ```
 
+### 5.6 Execution Planning（执行方案规划结果）
+
+```ts
+interface ExecutionDefinition {
+  goal: string;                  // 本轮开发要达成的目标
+  deliveryTarget: string;        // 第一版实际交付物
+  primaryUser: string;
+  coreScenario: string;
+}
+
+interface Surface {
+  name: string;                  // MVP 真正需要的界面
+  purpose: string;
+  keyActions: string[];
+}
+
+interface ProductStructure {
+  surfaces: Surface[];
+  userFlow: string[];            // 3～8 步，用户视角最小完整路径
+}
+
+interface TechLayer {
+  approach: string;
+  responsibilities: string[];
+}
+
+interface AiPlan {
+  needed: boolean;               // MVP 不需要 AI 时为 false
+  role: string;
+  integration: string;
+}
+
+interface StoragePlan {
+  approach: string;
+  reason: string;
+}
+
+interface ExternalService {
+  name: string;
+  purpose: string;
+  required: boolean;
+}
+
+interface TechnicalPlan {
+  architecture: string;
+  frontend: TechLayer;
+  backend: TechLayer;
+  ai: AiPlan;
+  storage: StoragePlan;
+  externalServices: ExternalService[];
+}
+
+interface DataObject {
+  name: string;                  // 核心业务数据对象，2～6 个
+  purpose: string;
+  keyFields: string[];
+}
+
+interface Milestone {
+  id: string;                    // 如 M1，3～6 个
+  name: string;
+  goal: string;
+  deliverables: string[];
+  acceptance: string[];
+}
+
+type TaskType =
+  | "product" | "frontend" | "backend" | "ai"
+  | "data" | "integration" | "test" | "release";
+type TaskEffort = "S" | "M" | "L";
+
+interface ExecutionTask {
+  id: string;                    // 如 T01，8～18 个
+  milestoneId: string;           // 引用本次输出存在的 Milestone.id
+  title: string;
+  objective: string;
+  type: TaskType;
+  dependencies: string[];        // 仅引用本次输出存在的任务 ID
+  acceptance: string[];          // 可人工判断的完成条件
+  effort: TaskEffort;
+}
+
+interface ValidationCheckpoint {
+  afterMilestone: string;        // 2～4 个
+  whatToValidate: string;
+  signal: string;
+}
+
+type ExecutionRiskImpact = "high" | "medium" | "low";
+
+interface ExecutionRisk {
+  risk: string;                  // 2～4 项
+  impact: ExecutionRiskImpact;
+  response: string;
+}
+
+interface ExecutionSummary {
+  firstActions: string[];        // 3～5 项有序、立即可开始
+  definitionOfDone: string[];    // 3～6 项，第一版做到这里就停
+  readyForFinalReview: boolean;
+}
+
+interface ExecutionPlanningResult {
+  executionDefinition: ExecutionDefinition;
+  productStructure: ProductStructure;
+  technicalPlan: TechnicalPlan;
+  dataModel: DataObject[];
+  milestones: Milestone[];
+  tasks: ExecutionTask[];
+  validationCheckpoints: ValidationCheckpoint[];
+  executionRisks: ExecutionRisk[];
+  executionSummary: ExecutionSummary;
+}
+
+interface ExecutionPlanningState {
+  result: ExecutionPlanningResult;
+  completedAt: string;                    // 执行方案生成成功时间
+}
+```
+
+### 5.7 Final Review（最终一致性审计结果）
+
+```ts
+type FinalVerdict = "ready" | "needs_attention";
+type CheckStatus = "pass" | "warning";
+type AdjustmentSeverity = "high" | "medium" | "low";
+type AdjustmentTarget =
+  | "clarification"
+  | "product_analysis"
+  | "mvp"
+  | "execution";
+
+interface ConsistencyCheck {
+  item: string;                   // 5～7 项
+  status: CheckStatus;
+  detail: string;
+}
+
+interface ReintroducedItem {
+  item: string;                   // 被排除能力回流；否定语境不算回流
+  appearsIn: string;
+  reason: string;
+}
+
+interface FactIssue {
+  issue: string;                  // 事实漂移 / 编造用户确认
+  basis: string;
+}
+
+interface ScopeIntegrity {
+  passed: boolean;
+  reintroducedItems: ReintroducedItem[];
+  finding: string;
+}
+
+interface FactIntegrity {
+  passed: boolean;
+  issues: FactIssue[];
+  finding: string;
+}
+
+interface ExecutionReadiness {
+  passed: boolean;
+  strengths: string[];
+  gaps: string[];
+}
+
+interface RecommendedAdjustment {
+  target: AdjustmentTarget;
+  severity: AdjustmentSeverity;
+  issue: string;
+  suggestion: string;             // 只建议，不自动修改
+}
+
+interface FinalSummary {
+  readyToBuild: boolean;
+  firstAction: string;            // 必须来自 firstActions 之一
+  keepInMind: string[];           // 2～4 条
+}
+
+interface FinalReviewResult {
+  verdict: FinalVerdict;          // 无分数
+  consistencyChecks: ConsistencyCheck[];
+  scopeIntegrity: ScopeIntegrity;
+  factIntegrity: FactIntegrity;
+  executionReadiness: ExecutionReadiness;
+  recommendedAdjustments: RecommendedAdjustment[]; // 0～5 条
+  finalSummary: FinalSummary;
+}
+
+interface FinalReviewState {
+  result: FinalReviewResult;
+  completedAt: string;                    // 审计成功时间
+}
+```
+
 ## 6. Analysis Run（运行记录）
 
 每次调用 AI 节点产生一条运行记录，用于表达当前工作区状态与错误：
@@ -334,7 +530,7 @@ type RunStatus = "running" | "succeeded" | "failed";
 
 interface AnalysisRun {
   id: string;                 // UUID
-  stage: WorkflowStage;       // "idea_understanding" / "clarification" / "product_analysis" / "mvp_scoping"
+  stage: WorkflowStage;       // 六个枚举值之一，如 "mvp_scoping" / "execution_planning"
   status: RunStatus;
   startedAt: string;          // ISO 时间
   finishedAt: string | null;  // ISO 时间
@@ -366,6 +562,8 @@ interface Project {
   clarification?: ClarificationState;   // V1 第二阶段新增，旧项目缺省 undefined
   productAnalysis?: ProductAnalysisState; // V1 第三阶段新增，旧项目缺省 undefined
   mvpScoping?: MvpScopingState;         // V1 第四阶段新增，旧项目缺省 undefined
+  executionPlanning?: ExecutionPlanningState; // V1 第五阶段新增，旧项目缺省 undefined
+  finalReview?: FinalReviewState;       // V1 第六阶段新增，旧项目缺省 undefined
   lastRun: AnalysisRun | null; // 最近一次运行（含失败信息）
 }
 ```
@@ -377,14 +575,18 @@ interface Project {
 - Clarification Synthesis 成功后写入 `clarification.clarifiedContext`、`status = "clarified"`
 - Product Analysis 成功后写入 `productAnalysis`、`status = "analyzed"`
 - MVP Scoping 成功后写入 `mvpScoping`、`status = "scoped"`
+- Execution Planning 成功后写入 `executionPlanning`，`status` 保持 `"scoped"` 不变
+- Final Review 成功后写入 `finalReview`，`status` 继续保持 `"scoped"` 不变；审计只读，不回写任何上游字段
 - ID 使用稳定 UUID（`crypto.randomUUID()`）
 
-### 7.1 旧数据兼容策略（第二、三、四阶段）
+### 7.1 旧数据兼容策略（第二～六阶段）
 
 - localStorage namespace 与 envelope 版本均保持不变（`idea-launch:projects:v1`、`version: 1`）
 - `clarification` 为可选字段：存储层运行时守卫接受 `undefined`，旧项目按「信息补全未开始」处理，打开时自动继续
 - `productAnalysis` 同为可选字段：守卫接受 `undefined`，旧项目按「产品分析未开始」处理；Clarified Context 已存在的旧项目打开后可手动开始分析
 - `mvpScoping` 同为可选字段：守卫接受 `undefined`，旧项目按「MVP 未开始」处理；Product Analysis 已存在的旧项目打开后可手动开始收敛
+- `executionPlanning` 同为可选字段：守卫接受 `undefined`，旧项目按「执行方案未开始」处理；MVP Scoping 已存在的旧项目打开后可手动生成执行方案
+- `finalReview` 同为可选字段：守卫接受 `undefined`，旧项目按「最终审计未开始」处理；Execution Planning 已存在的旧项目打开后可手动开始最终一致性审计
 - 不删除、不重命名已有字段；不清空、不迁移现有项目数据
 
 ## 8. API 请求 / 响应契约
@@ -546,6 +748,63 @@ interface MvpScopingResultResponse {
 
 `clarification.clarifiedContext` 为 `null` 或 `productAnalysis` 缺失时返回 `AI_BAD_REQUEST`。
 
+### 8.7 执行方案规划 `POST /api/ai/plan/execution`
+
+请求：
+
+```ts
+interface ExecutionPlanningRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;       // clarifiedContext 必须非 null
+  productAnalysis: ProductAnalysisResult;  // 必须存在
+  mvpScoping: MvpScopingResult;            // 最高优先级输入，必须存在
+}
+```
+
+成功响应 `data`：
+
+```ts
+interface ExecutionPlanningResultResponse {
+  executionPlanning: ExecutionPlanningResult;
+  latencyMs: number;
+}
+```
+
+错误处理：`clarification.clarifiedContext` 为 `null` 时返回 `AI_BAD_REQUEST`（「缺少已确认的 Clarified Context，无法生成执行方案。」）；`rawIdea` 为空时返回「缺少产品想法，无法生成执行方案。」；`productAnalysis` / `mvpScoping` 缺失或请求体不满足运行时守卫时返回通用 `AI_BAD_REQUEST`；未配置 Key 返回 `AI_MISSING_KEY`。
+
+### 8.8 最终一致性审计 `POST /api/ai/review/final`
+
+请求：
+
+```ts
+interface FinalReviewRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;       // clarifiedContext 必须非 null
+  productAnalysis: ProductAnalysisResult;  // 必须存在
+  mvpScoping: MvpScopingResult;            // 必须存在
+  executionPlanning: ExecutionPlanningResult; // 必须存在
+}
+```
+
+成功响应 `data`：
+
+```ts
+interface FinalReviewResultResponse {
+  finalReview: FinalReviewResult;
+  latencyMs: number;
+}
+```
+
+错误处理：仅用户手动触发；`clarifiedContext` 或 `executionPlanning` 缺失时返回 `AI_BAD_REQUEST`（可读中文提示）；请求使用默认 `REQUEST_TIMEOUT_MS` 120000ms；模型输出经 `FINAL_REVIEW_JSON_SCHEMA` 严格校验，失败返回 `AI_INVALID_RESPONSE`。失败不写入 `finalReview`，全部上游结果保留，可手动重试。
+
 ## 9. 错误码
 
 ```ts
@@ -560,11 +819,11 @@ type AiErrorCode =
   | "AI_TIMEOUT";             // 请求超时
 ```
 
-## 10. 后续工作流预留边界
+## 10. V1 扩展边界（V1 Complete）
 
-后续节点（Execution / Final）新增字段时：
+V1 六个节点（含 Final Review）已全部实现，均以 `Project` 可选字段方式扩展。后续如需新增字段：
 
-1. 优先以 `Project` 上新增可选字段的方式扩展（Clarification 即按此策略落地为 `clarification?: ClarificationState`）
+1. 优先以 `Project` 上新增可选字段的方式扩展（Clarification / Final Review 即按此策略落地）
 2. 不删除、不重命名 V1 已有字段
 3. 仅在无法通过可选字段兼容时才升级 envelope `version`，并在存储层实现迁移或安全重置
 4. 任何阶段都不得引入服务端持久化或 API Key 落盘

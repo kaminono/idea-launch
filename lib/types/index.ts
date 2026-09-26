@@ -314,6 +314,234 @@ export interface MvpScopingState {
   completedAt: string;
 }
 
+// ---- Execution Planning（执行方案规划）----
+
+/** 执行定义：本轮开发的目标与第一版交付物 */
+export interface ExecutionDefinition {
+  goal: string;
+  deliveryTarget: string;
+  primaryUser: string;
+  coreScenario: string;
+}
+
+/** 用户真正会看到或使用的界面 */
+export interface Surface {
+  name: string;
+  purpose: string;
+  keyActions: string[];
+}
+
+/** 产品结构：核心界面与最小完整用户路径 */
+export interface ProductStructure {
+  surfaces: Surface[];
+  userFlow: string[];
+}
+
+/** 单个技术层的实现方式与职责 */
+export interface TechLayer {
+  approach: string;
+  responsibilities: string[];
+}
+
+/** 产品中 AI 能力的边界 */
+export interface AiPlan {
+  needed: boolean;
+  role: string;
+  integration: string;
+}
+
+/** 存储方案 */
+export interface StoragePlan {
+  approach: string;
+  reason: string;
+}
+
+/** 需要接入的外部服务 */
+export interface ExternalService {
+  name: string;
+  purpose: string;
+  required: boolean;
+}
+
+/** 轻量技术方案 */
+export interface TechnicalPlan {
+  architecture: string;
+  frontend: TechLayer;
+  backend: TechLayer;
+  ai: AiPlan;
+  storage: StoragePlan;
+  externalServices: ExternalService[];
+}
+
+/** 核心业务数据对象 */
+export interface DataObject {
+  name: string;
+  purpose: string;
+  keyFields: string[];
+}
+
+/** 开发里程碑 */
+export interface Milestone {
+  id: string;
+  name: string;
+  goal: string;
+  deliverables: string[];
+  acceptance: string[];
+}
+
+/** 开发任务类型 */
+export type TaskType =
+  | "product"
+  | "frontend"
+  | "backend"
+  | "ai"
+  | "data"
+  | "integration"
+  | "test"
+  | "release";
+
+/** 任务工作量（不使用精确工时） */
+export type TaskEffort = "S" | "M" | "L";
+
+/** 可执行开发任务 */
+export interface ExecutionTask {
+  id: string;
+  milestoneId: string;
+  title: string;
+  objective: string;
+  type: TaskType;
+  dependencies: string[];
+  acceptance: string[];
+  effort: TaskEffort;
+}
+
+/** 里程碑后的验证节点 */
+export interface ValidationCheckpoint {
+  afterMilestone: string;
+  whatToValidate: string;
+  signal: string;
+}
+
+/** 执行阶段风险的影响程度 */
+export type ExecutionRiskImpact = "high" | "medium" | "low";
+
+/** 执行阶段风险 */
+export interface ExecutionRisk {
+  risk: string;
+  impact: ExecutionRiskImpact;
+  response: string;
+}
+
+/** 执行方案收尾：立即行动项与完成定义 */
+export interface ExecutionSummary {
+  firstActions: string[];
+  definitionOfDone: string[];
+  readyForFinalReview: boolean;
+}
+
+/** Execution Planning 结构化结果 */
+export interface ExecutionPlanningResult {
+  executionDefinition: ExecutionDefinition;
+  productStructure: ProductStructure;
+  technicalPlan: TechnicalPlan;
+  dataModel: DataObject[];
+  milestones: Milestone[];
+  tasks: ExecutionTask[];
+  validationCheckpoints: ValidationCheckpoint[];
+  executionRisks: ExecutionRisk[];
+  executionSummary: ExecutionSummary;
+}
+
+/** Project 上的执行方案规划状态（旧项目缺省为 undefined） */
+export interface ExecutionPlanningState {
+  result: ExecutionPlanningResult;
+  completedAt: string;
+}
+
+// ---- Final Review（最终一致性审计）----
+
+/** 总体结论：只允许 ready / needs_attention，不做量化评分 */
+export type FinalReviewVerdictStatus = "ready" | "needs_attention";
+
+/** 单项一致性检查结果 */
+export type ConsistencyCheckStatus = "pass" | "warning";
+
+/** Final Review 总体结论 */
+export interface FinalReviewVerdict {
+  status: FinalReviewVerdictStatus;
+  summary: string;
+}
+
+/** 固定维度的一致性检查项 */
+export interface ConsistencyCheck {
+  dimension: string;
+  status: ConsistencyCheckStatus;
+  finding: string;
+}
+
+/** 范围完整性：被砍功能有无回流 */
+export interface ScopeIntegrity {
+  passed: boolean;
+  reintroducedItems: string[];
+  finding: string;
+}
+
+/** 事实完整性：用户事实 / 模型分析 / 假设有无混淆 */
+export interface FactIntegrity {
+  passed: boolean;
+  issues: string[];
+  finding: string;
+}
+
+/** 执行准备度 */
+export interface ExecutionReadiness {
+  passed: boolean;
+  strengths: string[];
+  gaps: string[];
+}
+
+/** 建议调整的优先级 */
+export type AdjustmentPriority = "high" | "medium" | "low";
+
+/** 建议调整所针对的阶段（仅允许前四个生产阶段） */
+export type AdjustmentTargetStage =
+  | "clarification"
+  | "product_analysis"
+  | "mvp"
+  | "execution";
+
+/** 有限修正建议（只读审计，不自动改数据） */
+export interface RecommendedAdjustment {
+  priority: AdjustmentPriority;
+  targetStage: AdjustmentTargetStage;
+  adjustment: string;
+  reason: string;
+}
+
+/** 最终收尾：能否开工、第一件事、重要提醒 */
+export interface FinalSummary {
+  readyToBuild: boolean;
+  firstAction: string;
+  keepInMind: string[];
+}
+
+/** Final Review 结构化结果（只读一致性审计） */
+export interface FinalReviewResult {
+  verdict: FinalReviewVerdict;
+  consistencyChecks: ConsistencyCheck[];
+  scopeIntegrity: ScopeIntegrity;
+  factIntegrity: FactIntegrity;
+  executionReadiness: ExecutionReadiness;
+  recommendedAdjustments: RecommendedAdjustment[];
+  finalSummary: FinalSummary;
+}
+
+/** Project 上的最终复核状态（旧项目缺省为 undefined） */
+export interface FinalReviewState {
+  result: FinalReviewResult;
+  completedAt: string;
+}
+
 /** 运行错误（用户可读、已脱敏） */
 export interface RunError {
   code: AiErrorCode;
@@ -345,6 +573,10 @@ export interface Project {
   productAnalysis?: ProductAnalysisState;
   /** V1 第四阶段新增：MVP Scoping 完成后写入，旧项目缺省为 undefined */
   mvpScoping?: MvpScopingState;
+  /** V1 第五阶段新增：Execution Planning 完成后写入，旧项目缺省为 undefined */
+  executionPlanning?: ExecutionPlanningState;
+  /** V1 第六阶段新增：Final Review 完成后写入，旧项目缺省为 undefined */
+  finalReview?: FinalReviewState;
   lastRun: AnalysisRun | null;
 }
 
@@ -433,6 +665,39 @@ export interface MvpScopingRequest {
 
 export interface MvpScopingResultResponse {
   mvpScoping: MvpScopingResult;
+  latencyMs: number;
+}
+
+export interface ExecutionPlanningRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+  mvpScoping: MvpScopingResult;
+}
+
+export interface ExecutionPlanningResultResponse {
+  executionPlanning: ExecutionPlanningResult;
+  latencyMs: number;
+}
+
+export interface FinalReviewRequest {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+  mvpScoping: MvpScopingResult;
+  executionPlanning: ExecutionPlanningResult;
+}
+
+export interface FinalReviewResultResponse {
+  finalReview: FinalReviewResult;
   latencyMs: number;
 }
 

@@ -2,230 +2,310 @@
 
 idea-launch V1 的统一视觉规则。所有页面与组件必须遵循本文件；本文件与代码实现冲突时，以本文件为准并同步修正代码。
 
+> 视觉方向：**Warm Editorial Intelligence（温暖的、编辑式的智能）**。
+> 为火山引擎 ADG 社区直播演示服务，目标是 1440 × 900 下任意关键页截图可直接进入 PPT。
+
 ## 1. 设计气质
 
-2026 年现代 **AI Product Workspace**：
+- **Warm**：暖纸底、柿橙与深茄紫，彻底抛弃冷蓝紫 Indigo / Violet AI SaaS 语汇
+- **Editorial**：像一本认真编辑过的产品手册——大标题、编号、细分隔线、明确层级
+- **Decisive**：每个页面都在帮用户做决定（砍范围、定先后、给结论），不堆砌信息
+- **Expressive**：大字号标题与留白表达态度，但不喧哗
+- **Precise**：信息密度与对齐精确，结构化卡片而非大篇 Markdown
+- **AI-native**：明确呈现 AI 正在做什么，但不展示思维链，不用机器人 / 闪光图标
 
-- 年轻、现代、轻盈、理性、智能、产品化
-- Light-first：浅色为主，不做深色模式
-- 像优秀的现代开发者工具 / AI SaaS，**不复制任何具体产品**
-- 不是传统企业后台，也不是 ChatGPT 克隆，主界面**不使用聊天气泡**
+Light-first，不做深色模式；主界面不使用聊天气泡，不复制任何具体产品。
+
+### 色彩比例
+
+- 85–90% 中性暖色（Warm Paper / Surface / Ink / Border）
+- 8–12% 品牌色（Brand Orange，仅用于关键交互、当前状态、强调区）
+- 1–2% 点缀（Aubergine 深茄紫为主，Acid Lime 极少量）
 
 ## 2. 设计 Token
 
 ### 2.1 颜色
 
-| 角色 | 色值 | 用途 |
-| --- | --- | --- |
-| 页面背景 `bg-canvas` | `#F6F7F9` | 浅冷灰页面底色 |
-| 工作区背景 `bg-surface` | `#FFFFFF` | 卡片、主工作区、弹窗 |
-| 弱化背景 `bg-muted` | `#F1F3F5` | 标签、skeleton 基底、hover 浅底 |
-| 正文 `text-strong` | `#1A1D21` | 标题、主要正文（深灰黑，非纯黑） |
-| 正文次级 `text-body` | `#3D444D` | 卡片正文 |
-| 辅助文字 `text-muted` | `#6B7280` | 说明、占位、时间 |
-| 极弱文字 `text-faint` | `#9AA1AC` | 禁用、编号 |
-| 边框 `border-subtle` | `#E6E8EC` | 1px 极浅描边 |
-| 强调色 `bg-accent` | `#4F46E5` | Indigo，主按钮、当前步骤、关键链接 |
-| 强调色 hover | `#4338CA` | 主按钮 hover |
-| 强调浅底 `bg-accent-soft` | `#EEF0FE` | 选中态浅底、标签浅底 |
-| 成功 `text-success` / 浅底 | `#059669` / `#E7F6F0` | 连接成功、完成状态 |
-| 警告 `text-warning` / 浅底 | `#B45309` / `#FBF1E2` | 需要补充信息 |
-| 危险 `text-danger` / 浅底 | `#DC2626` / `#FDECEC` | 错误、失败、删除 |
-| Violet 点缀 | `#7C3AED` | 仅用于极小面积（如标识渐变端点） |
+Token 以 `app/globals.css` 中的 `@theme inline` 为代码事实来源。
 
-- 强调色只用于**可交互主元素**与**当前状态**，禁止大面积铺色。
-- 淡蓝、淡紫仅作为标签 / 浅底出现，不做满屏渐变。
+| 角色 | Token | 色值 | 用途 |
+| --- | --- | --- | --- |
+| Warm Paper | `bg-paper` / `bg-canvas` | `#F8F5EF` | 全局页面背景 |
+| Main Surface | `bg-surface` | `#FFFEFC` | 卡片、主工作区、弹窗 |
+| Secondary Surface | `bg-surface-secondary` / `bg-muted-bg` | `#F2EFEA` | 次级卡、标签、hover 浅底、只读基底 |
+| Brand Orange | `bg-brand` / `bg-accent` | `#F15A37` | 主按钮、当前节点、关键强调 |
+| Brand Orange Hover | `bg-brand-hover` | `#D94828` | 主按钮 hover |
+| Brand Orange Soft | `bg-brand-soft` / `bg-accent-soft` | `#FFF0EA` | 选中浅底、强调区浅底、序号底 |
+| Aubergine | `text-aubergine` / `bg-aubergine` | `#4A304D` | 完成横幅、产品分析主色、终局判断 |
+| Aubergine Soft | `bg-aubergine-soft` | `#EEE7EF` | 完成 / ready 浅底 |
+| Acid Lime | `bg-acid` | `#C5EA54` | 极少量点缀，默认不使用 |
+| Ink | `text-ink` / `text-strong` | `#1D1B1C` | 标题、主要正文 |
+| Secondary Ink | `text-ink-secondary` / `text-muted` / `text-body` | `#706A6B` | 卡片正文、说明 |
+| Muted Ink | `text-ink-muted` / `text-faint` | `#98928F` | 占位、时间、禁用、编号 |
+| Border | `border-border` / `border-subtle` | `#E8E2DB` | 默认 1px 描边 |
+| Strong Border | `border-border-strong` | `#D9D1C8` | 需要更强分隔时 |
+| Success | `text-success` / `bg-success-soft` | `#1F7A55` / `#E8F1EC` | 连接成功等小型状态 |
+| Warning | `text-warning` / `bg-warning-soft` | `#B45309` / `#F7ECD9` | 需要关注、高风险、需补充 |
+| Danger | `text-danger` / `bg-danger-soft` | `#C8402F` / `#FBE9E5` | 错误、删除（克制使用） |
+
+命名约定：新代码一律使用**新语义名**（`brand` / `ink` / `border` / `paper` / `surface-secondary` / `aubergine`），旧名（`accent` / `strong` / `subtle` / `muted` / `faint` / `body` / `canvas`）仅作为等价映射保留，用于平滑过渡。
+
+- Brand Orange 只用于可交互主元素、当前状态与少量强调区，禁止大面积铺色。
+- 「不做 / 暂缓」类范围决策**使用暖灰，禁止红色**——这不是错误。
+- 否定语境（不做登录、支付等）是正常范围结论，不得用危险色表达。
 
 ### 2.2 字体
 
-- Sans：沿用项目已配置的 Geist Sans（`--font-geist-sans`）。
-- Mono：Geist Mono 仅用于模型标识、耗时、ID 片段等技术信息。
+- Sans：Geist Sans（`--font-geist-sans`）。
+- Mono：Geist Mono，用于编号（01–11）、阶段标识、模型 ID、耗时、数据对象名等技术 / 编辑信息。
 - 字号阶：
 
 | Token | 尺寸 / 行高 | 用途 |
 | --- | --- | --- |
-| display | 36 / 44 | 首页 Hero 主标题 |
-| h1 | 22 / 30 | Workspace 页标题 |
+| Hero Display | 68 / 76（小屏 40 / 48） | 首页编辑式大标题 |
+| Stage / Verdict | 30–34 / 38–42 | Final Verdict 等结论大标题 |
+| Section Statement | 17–19 / 28–30 | 首要假设、First Action 等主叙述 |
+| h1 | 22 / 30 | 工作区页标题 |
 | h2 | 16 / 24 | 卡片标题 |
 | body | 14 / 22 | 默认正文 |
 | sm | 13 / 20 | 辅助信息、导航 |
-| xs | 12 / 18 | 标签、时间、脚注 |
+| xs | 11–12 / 16–18 | 标签、时间、脚注 |
 
-字重：标题 600，正文 400，强调 500。不使用 700 以上字重。
+- 字重：标题 600，强调正文 500，正文 400；不使用 700 以上字重。
+- 大标题使用负字距 `tracking-[-0.02em]`，呈现编辑式紧凑感。
+- 编辑式小标签统一使用 `.label-editorial`：11px / 600 / 0.12em / uppercase / Secondary Ink，格式常为「English Label · 中文说明」（如 `MVP Definition · MVP 定义`）。
 
 ### 2.3 间距
 
 4 的倍数：4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64。
 
-- 页面左右留白：桌面 ≥ 48。
-- 卡片内边距：20–24。
-- 卡片之间：16。
+- 卡片之间：16；卡片内边距：20–24（大面板 24–32）。
+- 桌面左右留白：≥ 48；内容主区最大宽约 880，左对齐。
 - 大量留白优先于分割线。
 
 ### 2.4 圆角
 
-- 卡片、输入框、按钮：**12px**
-- 弹窗、大型面板：**16px**
-- 标签、小 badge：8px
-- 不使用 `rounded-full` 胶囊（头像、小圆点除外），禁止过度圆角。
+三级，禁止过度圆角（≤ 24px）：
+
+- Badge、小按钮、序号：**8px**
+- 卡片、输入框、普通按钮：**12px**
+- 大面板、完成横幅、弹窗：**16px**
+
+除小圆点 / 序号圆标外，不使用 `rounded-full` 胶囊。
 
 ### 2.5 边框与阴影
 
-- 默认分隔手段：`1px solid #E6E8EC`。
-- 阴影只用于浮层与需要悬浮的重要卡片：
-  - `shadow-pop`：`0 8px 24px rgba(17, 24, 39, 0.08)` —— Modal / Drawer / Popover
-  - `shadow-card`：`0 1px 2px rgba(17, 24, 39, 0.04)` —— 仅可拖拽 / hover 抬起的卡片
-- 普通静态卡片**无阴影**，靠描边与白底分层。禁止每张卡片都带重阴影。
+- 默认分隔手段：`1px solid #E8E2DB`；**默认无阴影**，靠描边与表面色差分层。
+- 阴影仅用于浮层：
+  - `--shadow-pop`：`0 10px 30px rgba(29, 27, 28, 0.1)` — Modal / Drawer
+  - `--shadow-card`：`0 1px 2px rgba(29, 27, 28, 0.05)` — 仅需要抬起的卡片
+- 禁止静态卡片带重阴影、禁止每张卡片都有阴影。
 
 ### 2.6 动效
 
-- 时长：150ms–250ms；统一 easing `cubic-bezier(0.4, 0, 0.2, 1)`。
-- 仅使用：fade in、translateY(4–8px) 进入、状态切换、skeleton 微光、非侵入式 inline loading。
+- 时长 150–220ms；统一 easing `cubic-bezier(0.4, 0, 0.2, 1)`。
+- 仅使用：fade in、translateY(4–8px) 进入、状态切换、skeleton 微光、运行中橙色边呼吸、结果错峰 reveal。
+- 进入动效工具类：`animate-fade-in`、`animate-fade-slide-in`。
+- 结果 reveal：`.reveal-group` 容器内的 `.reveal-item` 按顺序以 50ms 步进错峰进入（0–300ms）。
+- 运行中面板：`.running-surface` 使用 2.2s 橙色 border 呼吸，表达 AI 正在工作。
 - 禁止：弹跳、大幅旋转、炫光、自动播放装饰动画。
-- skeleton 使用 `bg-muted` + 轻透明度脉冲（1.5s），不使用闪烁的灰色块。
+- 必须支持 `prefers-reduced-motion`：全局去除位移与循环动效，reveal 项直接可见。
+- 抽象装饰元素只用 CSS / SVG / 静态矢量；禁止 Canvas、WebGL、粒子、视频背景。
 
 ## 3. 组件规范
 
 ### 3.1 按钮
 
-- 主按钮：Indigo 实底白字，高 40，padding 0 16，圆角 12；hover 加深；禁用 50% 透明且不可点击。
-- 次按钮：白底 + 1px 浅边框 + 深灰字；hover 浅灰底。
-- 危险按钮（删除 / 清空）：次按钮样式，文字使用 danger 红，不使用红底。
-- 加载中：按钮内替换为小号 spinner + 文案（如「测试中…」），按钮禁用防重复提交。
+- 主按钮：Brand Orange 实底白字，高 40（首页主 CTA 可 44），圆角 8，padding 0 16；hover `brand-hover`；禁用约 50–60% 透明且不可点击。
+- 次按钮：Main Surface 底 + 1px Border + Secondary Ink；hover `surface-secondary`。
+- 危险按钮（删除 / 清空）：无底色，文字 danger，hover `danger-soft`；不使用红底。
+- 同区域只保留一个主按钮，其余出口按 Link / 次按钮分级。
+- 加载中：按钮内替换为小号 spinner + 文案，禁用防重复提交。
 
 ### 3.2 输入框 / Textarea
 
-- 白底、1px 浅边框、圆角 12、正文 14。
-- focus：1px Indigo + 同色 2px 浅 ring（`rgba(79,70,229,0.15)`）。
-- 错误态：1px danger 红 + 下方一行 xs 错误说明。
-- 首页想法输入：多行 textarea，min-height 160，placeholder 使用规格文案。
+- Surface 底、1px Border、圆角 12、正文 14。
+- focus：1px Brand + 同色 2px 浅 ring（brand 15% 透明）。
+- 错误态：下方一行 xs danger 说明。
+- 首页想法输入：多行 textarea，min-height 160，透明底融入大输入卡，placeholder 使用规格文案。
 
-### 3.3 卡片
+### 3.3 卡片（编辑式结果范式）
 
-- 白底、1px 浅描边、圆角 12（大面板 16）、内边距 20–24、无阴影。
-- 卡片标题：h2 + 可选小图标（线性、16px、中灰色）。
-- 结果卡片内列表使用短横线 bullet / 序号，不使用花哨图标。
+- Surface 底、1px Border、圆角 12（大面板 16）、内边距 20–24、无阴影。
+- 卡头：`.label-editorial` 或 h2 + 线性小图标（lucide，16–18px）。
+- 有序列表：左侧 mono 两位序号（01、02…），关键列表序号使用 Brand；无序列表使用 Muted Ink 小圆点。
+- 结果页统一使用 `reveal-group` / `reveal-item` 错峰进入。
+- 空态：Muted Ink 文案 + 中性图标，不使用彩色块。
+- 高风险 / 高严重度类卡才使用 `warning-soft`，其余使用 Secondary Surface。
 
-### 3.4 Modal / Drawer（设置）
+### 3.4 Modal / Drawer
 
-- 遮罩：`rgba(17, 24, 39, 0.32)`，点击遮罩与 Esc 可关闭。
-- 面板：白底、圆角 16、`shadow-pop`、宽度 480–520。
-- 进入：fade + translateY(8px)，200ms。
-- 内部使用纵向表单分组，字段之间 20 间距。
+- 遮罩：`rgba(29, 27, 28, 0.36)`（暖 Ink），点击遮罩与 Esc 可关闭。
+- 面板：Surface 底、1px Border、圆角 16、`shadow-pop`；Modal 宽约 520，Drawer 宽约 420 右侧滑入。
+- 进入：fade + translateY（Drawer 为侧向滑入），约 200ms。
+- 内部纵向表单分组，字段之间约 20 间距。
 
-### 3.5 导航（Workspace 左侧）
+### 3.5 Editorial Process Rail（Workspace 左侧流程导航）
 
-- 宽 240，白底右边框，与主工作区同高。
-- 步骤项：sm 字号、圆角 8、padding 8/12；默认中灰，当前步骤 Indigo 字 + `bg-accent-soft`；未到达步骤 `text-faint`。
-- 步骤编号使用 1–5 数字圆点，不使用机器人 / 星星图标。
+- 细线连接的编辑式步骤条，**无大块选中背景**。
+- 每阶段两行：上行 mono `01 · Idea`（Muted Ink），下行中文标签；当前阶段 Ink 600，已完成 Secondary Ink，未到达 Muted Ink。
+- 节点为小圆点：当前 Brand 实心（略放大），已完成 Brand 半透明，未到达空心（Paper 底 + Strong Border）。
+- 节点间 1px 竖线：已完成 Brand 40%，其余 Border。
+- 五个阶段：`01 IDEA` 产品想法 / `02 CLARIFY` 信息补全 / `03 ANALYSIS` 产品分析 / `04 SCOPE` MVP 收敛 / `05 EXECUTE` 执行方案。
+- 不使用机器人 / 星星图标。
 
-### 3.6 状态与反馈
+### 3.6 Stage Header（阶段页眉）
 
-- 空状态：居中，小尺寸线性图标（lucide，24px，faint 灰）+ 一句说明 + 可选次按钮。
-- 错误状态：danger 浅底卡片，圆角 12，内含可读错误说明（中文）与「重试」次按钮；**禁止 alert()**。
-- 成功状态：success 浅底 badge / 行内提示，成功后自动淡出（250ms）。
-- 分析中：按阶段轮换的产品级状态文案 + skeleton；**不展示模型思维链**。
+每个阶段主区顶部统一呈现五字段：
 
-### 3.7 标签
+1. Stage Number：mono 编号
+2. English Label：英文阶段名
+3. 中文标题：阶段中文名
+4. 阶段目的：一句话说明本阶段要解决什么
+5. Model Badge：复用 `MODEL_OPTIONS[0].label`（「豆包 Seed 2.1 Pro」）+ 极小 Orange Dot；**禁止硬编码模型名**
 
-- 场景标签 / badge：xs 字号、圆角 8、`bg-muted` 或 `bg-accent-soft`，可点击时 hover 加深；不带重边框。
+### 3.7 状态与反馈
+
+- 空状态：居中小型线性图标（lucide，Muted Ink）+ 一句说明 + 可选次按钮。
+- 错误状态：danger-soft 卡片，圆角 12，可读中文说明 + 重试次按钮；**禁止 alert()**。
+- 成功 / 完成：使用 Aubergine 横幅（`aubergine-soft` + Aubergine 圆标），不再使用绿色大横幅；小型内联成功可用 success。
+- 运行中：`.running-surface` 面板 + 轮换产品级文案；**不展示模型思维链**。
 
 ### 3.8 Clarification Decision Card（信息补全）
 
-信息补全不使用长表单，也不使用聊天 UI，采用 **Decision Card / Product Decision Workspace**：
+中心构图，不使用长表单或聊天 UI：
 
-- 顶部：页面标题「信息补全」+ 辅助文字「还有几件会影响产品方向的事情需要确认」；下方显著进度 `n / m`（如 `2 / 3`），配进度条（ARIA `progressbar`）。
-- 一次只展示一张问题大卡片：白底、1px 描边、圆角 16、内边距 24–32。
-  - 大标题：问题为 20–22px / 600，自然完整中文。
-  - `whyItMatters`：问题下方 sm `text-muted` 一句话说明，不暴露思维链。
-- 选项以**可点击卡片 / 大按钮**呈现（高 ≥ 48，描边卡片，圆角 12），不使用原生 radio / checkbox 视觉作为主界面；底层保留 `role="radio"/"checkbox"`、方向键与 Tab 可达、焦点环可见。
-  - 选中态：Indigo 描边 + `bg-accent-soft` + Indigo 文字 + 勾选指示。
-  - 允许自定义回答时提供「自己填写」选项，选中后展开 textarea（autoFocus）。
-  - multi_choice 支持多选；选项区尽量含「还没有确定」类合理选项。
-- 卡片底部操作：「上一题」次按钮（首题禁用）；末题为「完成信息补全」Indigo 主按钮，未答完禁用，其余题为「下一题」。
-- 单选作答后 300ms 左右自动轻推进到下一题；切题动画统一 fade + translateY(4–8px)，200ms，禁止复杂动画。
-- 1440 × 900 下：单题（问题 + 选项 + 操作）必须在一屏内完成，不需要大范围滚动。
+- 顶部中文标题 + 辅助说明「还有几件会影响产品方向的事情需要确认」；显著进度 `n / m`（mono）+ progressbar。
+- 一次只展示一张问题大卡：Surface、1px Border、圆角 16、内边距 24–32；问题为 20–22px / 600 完整中文，下方 sm Secondary Ink 的 `whyItMatters` 说明。
+- 选项为可点击 Decision Card（高 ≥ 48，圆角 12，描边卡），不用原生 radio / checkbox 作为主视觉；保留 `role` 与键盘可达、焦点环可见。
+  - 选中态：Brand 描边 + `brand-soft` + Brand 文字 + 勾选指示。
+  - 支持「自己填写」，选中后展开 textarea（autoFocus）；multi_choice 支持多选并含「还没有确定」类选项。
+- 底部：「上一题」次按钮（首题禁用）；末题为「完成信息补全」Brand 主按钮，未答完禁用；其余题为「下一题」。
+- 单选作答后约 300ms 自动轻推进；切题 fade + translateY，约 200ms。
+- 1440 × 900 下单题一屏内完成，不需大范围滚动。
 
-### 3.9 运行进度态（Clarification / Product Analysis）
+### 3.9 运行进度态（全部节点）
 
-- 问题生成中：标题级状态 + 产品级步骤文案轮换（「正在确认哪些信息会影响产品方向 / 正在检查目标用户 / 正在检查使用场景 / 正在识别关键约束 / 正在整理必要问题」）。
-- Synthesis 中：「正在整理你的产品上下文」+「正在合并原始想法 / 正在确认关键决策 / 正在区分事实和假设 / 正在准备产品分析上下文」。
-- Product Analysis 中：标题级说明「正在分析这个产品是否解决了一个足够明确的问题」+「正在收敛核心用户 / 正在分析核心使用场景 / 正在识别用户当前替代方式 / 正在梳理产品核心价值 / 正在检查关键假设 / 正在识别主要风险」轮换。
-- MVP Scoping 中：产品级步骤轮换「正在确定第一版最重要的验证目标 / 正在寻找最小完整用户闭环 / 正在判断哪些能力必须保留 / 正在主动删除暂时不需要的功能 / 正在检查独立开发约束 / 正在准备验证方案」。
-- 均不展示模型 Chain of Thought；防重复提交期间按钮禁用。
+统一使用共享 `StepProgress`（`components/workspace/step-progress.tsx`）：`.running-surface` 面板 + `.label-editorial` 的 `Working · …` 标题 + mono 两位序号圆标（pending 显编号 / active 显 spinner + Brand 实心 / done 显 Check + brand-soft）。
 
-### 3.10 Product Analysis 结果卡片（产品分析）
+轮换文案（只展示产品级动作，不展示思维链）：
 
-保持结构化 Workspace 风格，不使用大篇 Markdown，不使用聊天界面；卡片之间 16 间距。
+- Understanding：正在理解产品想法 / 识别目标用户 / 提取核心问题 / 检查已有约束 / 识别缺失信息。
+- Clarify Questions：确认影响产品方向的信息 / 检查目标用户 / 检查使用场景 / 识别关键约束 / 整理必要问题。
+- Clarify Synthesis：整理产品上下文 / 合并原始想法 / 确认关键决策 / 区分事实和假设 / 准备产品分析上下文。
+- Product Analysis：收敛核心用户 / 分析核心场景 / 识别当前替代方式 / 梳理核心价值 / 检查关键假设 / 识别主要风险。
+- MVP Scoping：确定首要验证目标 / 寻找最小完整闭环 / 判断必须保留的能力 / 主动删除暂时不需要的功能 / 检查独立开发约束 / 准备验证方案。
+- Execution Planning：整理产品结构 / 选择最简单技术路径 / 拆解核心数据对象 / 组织开发里程碑 / 拆分可执行任务 / 检查依赖与验收标准。
+- Final Review：核对用户与问题一致性 / 检查 MVP 范围回流 / 核对事实与假设边界 / 检查是否过度工程化 / 检查任务依赖与验收 / 形成最终执行建议。
 
-- 顶部成功横幅「产品分析完成」（success 浅底，与信息补全完成同构）。
-- **第一屏**必须看到产品定义、核心用户、核心场景、核心问题：
-  - 大卡「产品判断摘要」：Compass 图标；产品名称（[15px] 600）+ 分类 / 阶段小标签 + 一句话定义；内含「核心用户」（描述 / 情境 / 首要目标）与「核心场景」（触发 / 场景 / 期望结果）两张子卡。
-  - 重点卡「用户真正遇到的问题」：使用 `border-accent/25` + `bg-accent-soft/50` 轻强调；coreProblem 为主叙述，下方以轻量双栏列表展示 rootCauses 与 currentPainPoints。
-- 向下滚动依次：
-  - 「用户现在怎么解决」：纵向 / 横向小卡片，每张含替代方式、为什么会使用、当前不足；**不做成竞品矩阵**。
-  - 「产品价值」：单独重点卡，使用 violet 浅底（`bg-[#7C3AED]` 的 6% 透明底 + 25% 描边），展示 coreValue / userChange / differentiationDirection；只做小面积淡紫强调，禁止大面积渐变。
-  - 「关键假设（需要验证）」：Hypothesis Cards，每张含假设内容、重要程度 badge（高=accent、中=warning、低=faint/muted）、验证建议（validationIdea）；不使用复杂评分系统。
-  - 「主要风险」：克制的 Risk Cards，含风险、类型 badge、严重程度 badge、原因；高风险仅使用少量暖橙（warning-soft），不整页红色、不制造危机感。
-  - 底部「下一阶段应该关注什么」：以列表展示 analysisSummary.mvpFocus；下方为可点击 Indigo 主按钮「开始收敛 MVP」（ArrowRight），进行中替换为 spinner +「正在开始」并禁用。
-- 右下角 mono xs 展示「分析耗时 {durationMs} ms」。
-- 1440 × 900 下第一屏只放产品判断摘要 + 核心问题两张大卡，不堆标题与空白。
+### 3.10 Product Analysis 结果页
 
-### 3.11 MVP Scoping 结果卡片（MVP 范围收敛）
+以 **Aubergine 为主色**，Core Problem Statement 是页面中心；不使用大篇 Markdown 或竞品矩阵。
 
-直播 Demo 的核心页面之一，视觉目标：观众不用阅读大量文字就能理解「AI 正在主动帮用户砍范围」。卡片之间 16 间距，保持结构化 Workspace 风格。
+- 顶部 Aubergine 完成横幅「产品分析完成」。
+- 第一屏两张大卡：
+  - 「产品判断摘要」：Compass（Aubergine）；产品名 + 分类 / 阶段 Secondary Surface 标签 + 一句话定义；内含「核心用户」「核心场景」两子卡。
+  - 「用户真正遇到的问题」Core Problem Statement：Aubergine / Brand 轻强调区，coreProblem 为主叙述，下方双栏 rootCauses 与 currentPainPoints。
+- 向下依次：当前替代方式小卡（替代方式 / 为什么使用 / 当前不足）、产品价值重点卡、关键假设卡（重要程度 badge + validationIdea）、主要风险（高风险 warning-soft，克制）、`mvpFocus` 列表。
+- 底部 Brand 主按钮「开始收敛 MVP」（ArrowRight），进行中替换 spinner 并禁用。
+- 右下角 mono xs 展示分析耗时。
 
-- 顶部成功横幅「MVP 范围已经收敛」（success 浅底，与前两阶段完成同构）。
-- **第一屏**必须看到：
-  - 「MVP 定义」大卡：Sparkle 图标；goal 为主叙述，下方三列展示第一优先用户 / 核心场景 / 核心价值。
-  - 「这一版首先验证什么」重点卡：使用 `border-accent/25` + `bg-accent-soft/50` 轻强调；primaryHypothesis 为主叙述，下方双列「为什么优先验证它 / 怎么判断结果」；禁止编造百分比指标。
-  - 「第一版必须做」区域（Indigo 浅底 `bg-accent-soft/30`，CheckCircle2 图标）露出前几张功能卡。
-  - 「现在先不做」区域必须在首屏可见其存在。
-- **Build Now / Not Now 核心对比**（xl 双列）：
-  - 「第一版必须做」：Indigo 浅底容器，每张功能卡展示功能名（accent 600）、用户需要、为什么必须、完成标准（产品能力描述）。
-  - 「现在先不做 · 以后再考虑」：**淡紫容器**（`border-violet-accent/25` + `bg-violet-accent/[0.05]`，Clock 图标），每项含暂缓原因与「重新考虑的条件」（CornerDownRight 紫色小图标引导）。
-  - 「当前方向明确不做」：**弱灰容器**（`border-subtle` + `bg-muted-bg/50`，Ban muted 图标），每项只含名称与原因。
-  - 「不做」类内容**禁止使用红色**：这是产品范围决策，不是错误。
-- 「最小完整用户闭环」：entry + steps（3～6）+ outcome 合并为一行 flex-wrap 胶囊节点，节点间 ArrowRight（faint 灰）；起点 Indigo、中间 muted、终点 success；只做简单流程图，不绘制架构图。
-- 「范围约束」：普通白卡 + bullet 列表。
-- 「MVP 风险」与「上线后怎么验证」双栏白卡，信息密度适中，不抢 Build / Not Build 的视觉重点；高影响风险仅用少量暖橙（warning-soft）。
-- 「范围总结」：白卡内双小卡「现在做」（accent 浅底）/「现在不做」（muted 浅底）形成直接对比；底部「生成执行方案」按钮 disabled（Lock 图标 +「下一阶段开放」），样式为弱灰边框 + faint 文字 + `cursor-not-allowed`。
-- 右下角 mono xs 展示「MVP 收敛耗时 {durationMs} ms」。
+### 3.11 MVP Scoping 结果页
+
+直播核心页：观众不读长文即可理解「AI 正在主动砍范围」。
+
+- 顶部 Aubergine 完成横幅「MVP 范围已经收敛」。
+- 「MVP 定义」大卡：goal 主叙述 + 第一优先用户 / 核心场景 / 核心价值。
+- **This MVP Validates**：Brand 轻强调区（`brand/25` 描边 + `brand-soft/50`），primaryHypothesis 升为 17px semibold 主叙述；禁止编造百分比。
+- **Build Now / Not Now 核心对比**：
+  - Build Now：`brand-soft/40` 容器，每项左侧 mono 大数字序号（22px，Brand）01 / 02…，卡名 Brand，含用户需要 / 为什么必须 / 完成标准。
+  - Not Now（暂缓）：Secondary Surface 暖灰容器，Clock / CornerDownRight 使用 Muted Ink，含暂缓原因与重新考虑条件。
+  - Never（明确不做）：中性 Border + Surface 容器，Ban Muted Ink，只含名称与原因。
+  - 「不做」类内容禁止红色。
+- Core Loop：胶囊节点 + ArrowRight（Muted Ink）；起点 Brand Soft，终点 Aubergine Soft，中间 Secondary Surface。
+- 范围约束、MVP 风险（高风险 warning）、轻量验证计划、Checkpoints 依次排列。
+- 范围总结：Build（brand-soft + Brand）vs Do Not Build（Secondary Surface + Muted Ink）直接对比。
+- 底部 Brand 主按钮「生成执行方案」，说明只展开已冻结 MVP、不新增功能。
+- 右下角 mono xs 展示收敛耗时。
+
+### 3.12 Execution Planning 结果页
+
+让独立开发者立刻知道**现在先做什么、分几步做完**；不画甘特图、不伪造日期。
+
+- 顶部 Aubergine 完成横幅「执行方案已经生成」。
+- **Start Here 首屏行动区**：Brand 轻强调区，label `Start Here · 现在先做什么`；firstActions 每项左侧 mono 大数字（26px，Brand）+ 两位序号，是页面最可立即行动的区域。
+- 「执行目标」大卡：goal 主叙述 + 交付目标 / 第一优先用户 / 核心场景。
+- **Milestones 横向 M1──M2──M3──M4**：桌面横向，序号圆标（brand-soft + Brand mono `M1`），非末节点之间 1px 横线连接；窄屏（`< md`）自动转为纵向时间线。每阶段含名称、目标、交付物与验收标准。
+- Tasks：按里程碑分组的 Accordion（默认展开第一组，`aria-expanded` 可达）；任务卡含 mono 任务 ID（Brand）、标题、类型 badge（brand-soft）、工作量 badge（Secondary Surface）、任务目标、依赖解析、可人工验收的对勾项。
+- Product Structure：userFlow 胶囊节点（起点 Brand Soft、终点 Aubergine Soft）+ surfaces 网格小卡。
+- Technical Plan：架构陈述 + 前端 / 后端 TechLayerCard + AI 卡（Cpu，仅 needed 时展示）+ 数据存储（Database）+ 外部服务 badge（必需 brand-soft / 可选中性）。
+- 核心数据对象：对象名 mono（Brand）/ 用途 / 关键字段，不画完整 ER 图。
+- Checkpoints 与执行风险（高风险 warning）。
+- DoD「第一版做到这里就可以停」：中性 Surface 卡 + CheckCircle2（Brand）对勾列表。
+- 底部 Brand 主按钮「检查完整立项方案」，说明只读审计、不改方案。
+- 右下角 mono xs 展示生成耗时。
+
+### 3.13 Final Review 结果页（最终一致性审计）
+
+安静的收尾：以 Aubergine / Ink 为主，First Action 是全流程最后落点；不新增第六步，不提供编辑入口。
+
+- **Final Verdict 首区**：无分数、无评级刻度。
+  - ready：`aubergine-soft/50` + Aubergine / 30px 大标题「可以开始开发」，label `Ready to Build`。
+  - needs_attention：中性 Secondary Surface 区 + Ink 大标题「需要关注」，label `Needs Attention`。
+  - finalSummary 作为主说明。
+- 一致性检查并入首区：5–7 行，pass 用裸 Check（Aubergine），异常用 AlertTriangle（warning-soft），每行一句 detail；方案一致即判 ready，不强行制造问题。
+- Scope Integrity / Fact Integrity：`.label-editorial` 双段，正常结论用 Muted Ink 图标 + 中性说明，异常项才用 warning；否定语境不得误判为范围回流。
+- Execution Readiness：strengths（CheckCircle2 Aubergine）与 gaps（AlertTriangle Muted Ink）双列。
+- Recommended Adjustments：0–5 条，仅 high 使用 warning，中 / 低使用中性 Secondary Surface；只给建议，禁止自动修改前序结果。
+- **First Action 最后落点**：ready 用 `aubergine-soft/40`，非 ready 用中性 Surface；firstAction 升为 19px semibold，keepInMind 以箭头 / 对勾列出。
+- 出口：「返回历史项目」中性 Link + 「重新查看执行方案」Brand 主按钮。
+- 右下角 mono xs 展示审计耗时。
 
 ## 4. 页面布局
 
 ### 4.1 首页
 
-- 顶部栏：白底、底部 1px 边框、高 60；左「idea-launch」字标（可配一个极简几何标识，禁止机器人 / 星星），右「历史项目」「设置」次按钮。
-- Hero 居中单栏，最大宽 760：主标题 display，辅助文字 body / muted，下方大输入卡片（白底描边圆角 16），再下一行场景标签与右侧主按钮「开始分析」。
+- TopBar：Warm Paper 半透 + 底部 1px Border、高 60；左侧收敛轨迹 Brand Mark（抽象轨迹 / 节点，Orange + Aubergine，禁止火箭 / Sparkle / 机器人），右侧「历史项目」「设置」次按钮。
+- Hero 居中单栏，最大宽约 820：`.label-editorial` 眉题 + 64–76px 编辑式大标题（关键词用 Brand）+ 一段说明。
+- 轻抽象路径背景：Hero 后方静态 SVG 双路径（Brand / Aubergine 低透明）+ 少量节点圆点；纯静态，禁止 Canvas / 粒子 / 视频。
+- 大输入卡：Surface、圆角 16、描边；含 label + 字数（mono）+ textarea + 场景标签 + 右侧 Brand 主按钮「开始分析」。
+- 未配置 API Key：输入卡内 warning-soft 引导条，点击打开设置，想法保留。
 - 首屏高度内完成核心操作，不堆营销内容。
 
 ### 4.2 Workspace
 
-- 顶部：项目名（h1）+ 状态 badge + 右侧设置入口。
-- 左 240 导航，右侧主工作区（内容最大宽 880，左对齐）。
-- 结果为结构化卡片网格 / 栈：产品方向、一句话定义、目标用户、核心问题、主要场景、已知约束、当前假设、还需确认的信息。
-- 假设类信息卡片使用 warning 浅底小标记「假设」；需要确认信息使用 warning 色；完成态 success 色。
-- 信息补全结果页（Clarified Context）：顶部成功态「信息补全完成」，0 题自动完成时附提示「当前信息已经足够进入下一阶段，无需额外补充」；下方按卡片分组呈现产品定义、核心用户、核心场景、核心问题、已确认决策、明确约束、仍然存在的假设、暂时未知但不阻塞的信息；事实 / 决策 / 假设 / 未知四类边界在视觉上可区分。
-- 页面底部「开始产品分析」为可点击 Indigo 主按钮（ArrowRight 图标）；进行中替换为 spinner + 「正在开始」并禁用，防止重复提交。
-- 产品分析结果页（Product Analysis）规范见 §3.10。
-- MVP Scoping 结果页：顶部成功态「MVP 范围已经收敛」；下方按卡片分组呈现 MVP 定义、首要验证目标、第一版必须做 / 暂缓做 / 明确不做（三色分区：Indigo / 淡紫 / 弱灰，不用红）、最小完整用户闭环、范围约束、MVP 风险与验证计划、范围总结；页面底部「生成执行方案」保持 disabled 并标注「下一阶段开放」；规范见 §3.11。
+- Shell：Warm Paper 背景；左侧 Editorial Process Rail，右侧主工作区（内容最大宽约 880）。
+- Stage Header 五字段见 §3.6；项目名与状态 badge 位于工作区顶部。
+- Raw Idea 卡始终展示。
+- 各阶段结果按本文件 §3.9–§3.13 呈现；运行态、错误态、空态统一视觉语言。
+- Clarified Context 页：完成后展示产品定义、核心用户 / 场景 / 问题、已确认决策、明确约束、仍然存在的假设、暂不阻塞的未知；事实 / 决策 / 假设 / 未知四类边界视觉可区分；底部 Brand 主按钮进入产品分析。
+- Final Review 归属执行方案阶段视图，左侧导航不新增第六步。
 
 ## 5. 响应式
 
-- 第一优先：**1440 × 900**、**1920 × 1080**（直播大屏），保证主工作区一屏内信息密度合理、字号在大屏下不显小。
-- 保证普通笔记本 1280 宽度下不出现横向滚动 / 布局破坏。
-- 断点：`< 1024` 时左侧导航折叠为顶部横向步骤条；`< 640` 时单列、左右留白 16。
-- 移动端仅保证基础可用，不投入复杂手势与移动专属交互。
+- 第一优先：**1440 × 900**、**1920 × 1080**（直播大屏），保证关键页一屏内构图完整、字号在大屏不显小。
+- 1280 × 800 下不出现横向滚动 / 布局破坏。
+- 断点：
+  - `< 1024`：左侧 Process Rail 转为顶部横向步骤条。
+  - Milestones：`md` 及以上横向 M1──M4，以下转为纵向时间线。
+  - `< 640`：单列、左右留白 16，双栏卡堆叠。
+- 移动端仅保证基础可用，不投入复杂手势。
 
-## 6. 明确禁止
+## 6. 品牌 Mark
 
+- 抽象表达「想法沿路径收敛为方案」：轨迹线 + 收敛节点，Orange + Aubergine。
+- 禁止：火箭、Sparkle / 闪光、机器人、大脑等具象 AI 符号。
+
+## 7. 明确禁止
+
+- 冷蓝紫 Indigo / Violet 配色、蓝紫光晕、满屏渐变、彩色 mesh 背景
 - 大面积深色 / 赛博背景、深色模式翻转
-- 蓝紫巨大光晕、满屏渐变、彩色 mesh 背景
-- 大量玻璃拟态（backdrop blur 浮层）
-- 机器人图标、AI 星星 / 闪光满天飞
+- Canvas / WebGL / 粒子 / 视频背景
+- 大量玻璃拟态
+- 机器人、AI 星星 / 闪光图标
 - 聊天气泡作为主界面
-- 过度 Bento Grid、过度圆角、每张卡片重阴影
-- 传统 Dashboard 数据大屏（满屏数字看板）
+- 过度 Bento Grid、圆角超过 24px、静态卡片重阴影
+- 用红色表达「暂缓 / 不做」等正常范围决策
 - 弹跳 / 炫光类动画与自动播放装饰
-- 使用 emoji 充当功能图标（需要图标时统一使用 lucide-react 线性图标，16–20px）
+- 硬编码模型名（必须复用 `MODEL_OPTIONS`）
+- 使用 emoji 充当功能图标（图标统一使用 lucide-react 线性图标，16–20px，stroke 1.5–2）

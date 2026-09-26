@@ -4,6 +4,8 @@ import {
   isClarificationAnswer,
   isClarificationQuestions,
   isClarifiedContext,
+  isExecutionPlanningState,
+  isFinalReviewState,
   isIdeaUnderstanding,
   isMvpScopingResult,
   isProductAnalysisResult,
@@ -125,6 +127,12 @@ function isProject(value: unknown): value is Project {
       isProductAnalysisState(project.productAnalysis)) &&
     (project.mvpScoping === undefined ||
       isMvpScopingState(project.mvpScoping)) &&
+    // 第五阶段前的旧项目没有 executionPlanning 字段，undefined 视为合法缺省
+    (project.executionPlanning === undefined ||
+      isExecutionPlanningState(project.executionPlanning)) &&
+    // Final Review 完成前的旧项目没有 finalReview 字段，undefined 视为合法缺省
+    (project.finalReview === undefined ||
+      isFinalReviewState(project.finalReview)) &&
     (project.lastRun === null || isAnalysisRun(project.lastRun))
   );
 }

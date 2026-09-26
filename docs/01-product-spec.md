@@ -56,7 +56,7 @@ idea-launch 通过分步 AI Workflow，逐阶段解决上述问题，而不是�
 13. 本地保存
 14. Markdown 导出
 
-### 4.1 当前实际实现范围（V1 第四阶段）
+### 4.1 当前实际实现范围（V1 Complete）
 
 **已实现：**
 
@@ -75,15 +75,22 @@ idea-launch 通过分步 AI Workflow，逐阶段解决上述问题，而不是�
   - 用户在 Product Analysis 页面检查后**手动点击**「开始收敛 MVP」启动，不挂自动 effect
   - 以 Product Analysis 为最主要依据，输出第一版定义、唯一首要验证假设、最小完整用户闭环、必须做 / 暂缓做 / 明确不做、范围约束、MVP 风险与轻量验证计划
   - 核心是主动帮独立开发者砍范围：想法过大时主动删减，只保留一个完整核心闭环
+- 第 10、11 项：Execution Planning 执行方案规划节点
+  - 用户在 MVP Scoping 结果页检查后**手动点击**「生成执行方案」启动，不挂自动 effect
+  - 以已冻结的 MVP Scoping 为最高优先级输入，输出执行目标、产品结构（界面与用户路径）、轻量技术路径、核心数据对象、开发里程碑、可执行任务、验证节点、执行风险、立即行动项与完成定义
+  - 严格遵守范围冻结：不得把上一阶段已暂缓 / 明确不做的能力重新写回执行方案
+- 第 12 项：Final Review 最终一致性审计节点
+  - 用户在 Execution Planning 结果页**手动点击**「检查完整立项方案」启动，不挂自动 effect
+  - 只读审计全部上游产物：输出 verdict（ready / needs_attention，无分数）、5～7 项一致性检查、范围完整性（能否定语境区分）、事实完整性、执行准备度、0～5 条调整建议与最终总结
+  - 方案一致即判 ready 可开工，不强行制造问题；发现范围回流 / 事实漂移时给 needs_attention，只建议不自动修改
 - 第 13 项相关：localStorage 本地保存、刷新恢复、历史项目（含旧版本数据兼容）
 - 模型连接：API Key 设置 + 真实连接测试
 
-### 4.2 后续环节（仅记录规格，当前不实现）
+### 4.2 未实现环节（仅记录规格）
 
-- Execution Planning、Final Review
-- Markdown 最终报告与导出
+- 第 14 项：Markdown 最终报告与导出（V1 不实现，业务数据仅保留在本地）
 
-完成 MVP Scoping 后，工作区停在「MVP 收敛完成」状态，页面底部「生成执行方案」按钮保持禁用并显示「下一阶段开放」。
+完成 Final Review 后，工作区停在「立项检查完成」状态：ready 时展示「可以开始开发」与第一件事，needs_attention 时保留审计结论与调整建议，用户可回到对应阶段修改后重新检查。
 
 ### 4.3 Clarification 产品原则
 
@@ -118,6 +125,19 @@ MVP 不是产品所有功能的缩小版。目标是用尽可能有限的范围�
 - 独立开发者默认约束：一人开发、时间与维护能力有限、尽快真实验证、避免过度工程化；Clarified Context 明确给出开发周期时必须遵守，无明确周期时不自行承诺
 - 严格工作边界：不写代码、不设计数据库 / API / 技术架构、不输出 Sprint / 开发任务 / 完整 PRD、不做高保真设计、不做商业与运营方案（属 Execution Planning 或以后阶段）
 - `scopeSummary.readyForExecutionPlanning` 正常为 `true`，仅存在真正重大范围冲突时才 `false`
+
+### 4.6 Execution Planning 产品原则
+
+Execution Planning 不重新做产品判断，也不重新砍范围；它把**已经冻结的 MVP 范围**翻译成独立开发者真正可以开始执行的开发计划：做哪些界面、走什么技术路径、有哪些核心数据对象、分几个里程碑、每个任务怎么验收、第一版做到哪里就停。
+
+- 输入优先级：MVP Scoping（**最高优先级，范围已冻结**）→ Product Analysis → Clarified Context → `rawIdea`；不重新提问、不重新分析、不改动 MVP 决策
+- **范围冻结（最高优先级验收规则）**：MVP Scoping 中 `shouldDefer`（暂缓做）与 `explicitlyOutOfScope`（明确不做）的能力，严禁重新出现在 surfaces / technicalPlan / dataModel / milestones / tasks 中；登录注册、云数据库、云同步、支付、权限体系、社区、多端 App、企业后台、推荐流、音视频等被排除能力不得回流。仅当某项基础设施能力是实现已冻结 MVP 的必要基础（例如本地存储、单一 AI 接口转发）时允许出现，且必须明确说明它是「实现基础」而非新增产品功能
+- 输出必须可执行、可验收：任务粒度为一个独立开发者可以直接开工的最小工作项；里程碑不伪造日期、不做甘特图，只表达阶段顺序与交付物
+- 数量边界：`milestones` 3～6 个；`tasks` 8～18 个（ID 形如 `T01`，标注 `milestoneId`、类型、工作量 S/M/L、依赖任务 ID 与可人工验收的 acceptance）；`productStructure.userFlow` 3～8 步、`surfaces` 仅包含 MVP 真正需要的界面；`dataModel` 2～6 个核心对象（只写名称 / 用途 / 关键字段）；`validationCheckpoints` 2～4 个；`executionRisks` 2～4 项；`firstActions` 3～5 项（有序、立即可以开始）；`definitionOfDone` 3～6 项
+- 技术路径保持轻量：默认沿用 V1 已验证的技术栈与本地优先架构（Next.js + 浏览器本地存储 + 单一豆包模型经本机 Route Handler 转发），不引入服务端持久化、登录、多模型或大型新依赖；AI 能力在 MVP 不需要时显式标注 `needed = false`
+- 任务依赖必须真实可解析：`dependencies` 只引用本次输出中存在的任务 ID，不允许悬空依赖；验收标准使用可人工判断的完成条件，不写「代码质量好」这类空泛描述
+- 严格工作边界：不重新生成产品分析 / MVP 范围结论，不输出最终立项方案、商业计划、运营增长方案或真实代码；`readyForFinalReview` 正常为 `true`
+- 计划只服务第一版：`definitionOfDone` 明确「第一版做到这里就可以停」，防止执行阶段重新膨胀范围
 
 ## 5. 明确不做（V1 Out of Scope）
 

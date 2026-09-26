@@ -24,16 +24,23 @@ import { ProductAnalysisProgress } from "./product-analysis-progress";
 import { ProductAnalysisResultView } from "./product-analysis-result";
 import { MvpScopingProgress } from "./mvp-scoping-progress";
 import { MvpScopingResultView } from "./mvp-scoping-result";
+import { ExecutionPlanningProgress } from "./execution-planning-progress";
+import { ExecutionPlanningResultView } from "./execution-planning-result";
+import { FinalReviewProgress } from "./final-review-progress";
+import { FinalReviewResultView } from "./final-review-result";
 import { SettingsModal } from "@/components/settings/settings-modal";
 import {
   analyzeProduct,
   ClientAiError,
   generateClarificationQuestions,
+  planExecution,
+  reviewFinal,
   scopeMvp,
   synthesizeClarification,
   understandIdea,
 } from "@/lib/client/api";
 import { loadSettings, saveProject } from "@/lib/storage";
+import { MODEL_OPTIONS } from "@/lib/ai/config";
 import { useProject } from "@/lib/client/use-project";
 import { useHydrated } from "@/lib/client/use-hydrated";
 import type {
@@ -64,7 +71,13 @@ type Phase =
   | "analyzed"
   | "mvp-running"
   | "mvp-error"
-  | "mvp-done";
+  | "mvp-done"
+  | "execution-running"
+  | "execution-error"
+  | "execution-done"
+  | "review-running"
+  | "review-error"
+  | "review-done";
 
 function toRunError(error: unknown): RunError {
   if (error instanceof ClientAiError) return error.toRunError();
@@ -108,11 +121,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     | "synthesis-running"
     | "analysis-running"
     | "mvp-running"
+    | "execution-running"
+    | "review-running"
     | null
   >(null);
   const [retryingUnderstanding, setRetryingUnderstanding] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [showUnderstanding, setShowUnderstanding] = useState(false);
+  // Final Review 已完成后，允许用户临时回看执行方案；默认仍展示最终检查结果
+  const [viewingExecution, setViewingExecution] = useState(false);
 
   const inFlightRef = useRef(false);
 
@@ -495,6 +512,173 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     }
   }, [storedProject]);
 
+  // ---- Stage 5：Execution Planning（仅用户手动触发，不挂自动 effect）----
+  const runExecutionPlanning = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current) return;
+    const settings = loadSettings();
+    const current = storedProject ?? null;
+    const clarification = current?.clarification;
+    const productAnalysis = current?.productAnalysis?.result;
+    const mvpScoping = current?.mvpScoping?.result;
+    if (
+      !settings.apiKey.trim() ||
+      !current ||
+      !current.ideaUnderstanding ||
+      !clarification ||
+      !clarification.clarifiedContext ||
+      !productAnalysis ||
+      !mvpScoping
+    ) {
+      return;
+    }
+
+    inFlightRef.current = true;
+    setLocalPhase("execution-running");
+    setSessionError(null);
+    const startedAt = new Date().toISOString();
+
+    try {
+      const { executionPlanning: result, latencyMs } = await planExecution({
+        settings,
+        rawIdea: current.rawIdea,
+        ideaUnderstanding: current.ideaUnderstanding,
+        clarification,
+        productAnalysis,
+        mvpScoping,
+      });
+
+      const finishedAt = new Date().toISOString();
+      // 不新增 ProjectStatus：保持 scoped，execution-done 视图由 executionPlanning 派生
+      const saved: Project = {
+        ...current,
+        status: "scoped",
+        updatedAt: finishedAt,
+        executionPlanning: {
+          result,
+          completedAt: finishedAt,
+        },
+        lastRun: makeRun(
+          "execution_planning",
+          startedAt,
+          "succeeded",
+          latencyMs,
+          null,
+          finishedAt
+        ),
+      };
+      saveProject(saved);
+    } catch (error) {
+      const runError = toRunError(error);
+      const finishedAt = new Date().toISOString();
+      const failed: Project = {
+        ...current,
+        status: "failed",
+        updatedAt: finishedAt,
+        lastRun: makeRun(
+          "execution_planning",
+          startedAt,
+          "failed",
+          null,
+          runError,
+          finishedAt
+        ),
+      };
+      saveProject(failed);
+      setSessionError(runError.message);
+    } finally {
+      inFlightRef.current = false;
+      setLocalPhase((prev) =>
+        prev === "execution-running" ? null : prev
+      );
+    }
+  }, [storedProject]);
+
+  // ---- Final Review（仅用户手动触发，只读审计，不修改前序结果）----
+  const runFinalReview = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current) return;
+    const settings = loadSettings();
+    const current = storedProject ?? null;
+    const clarification = current?.clarification;
+    const productAnalysis = current?.productAnalysis?.result;
+    const mvpScoping = current?.mvpScoping?.result;
+    const executionPlanning = current?.executionPlanning?.result;
+    if (
+      !settings.apiKey.trim() ||
+      !current ||
+      !current.ideaUnderstanding ||
+      !clarification ||
+      !clarification.clarifiedContext ||
+      !productAnalysis ||
+      !mvpScoping ||
+      !executionPlanning
+    ) {
+      return;
+    }
+
+    inFlightRef.current = true;
+    setLocalPhase("review-running");
+    setSessionError(null);
+    setViewingExecution(false);
+    const startedAt = new Date().toISOString();
+
+    try {
+      const { finalReview: result, latencyMs } = await reviewFinal({
+        settings,
+        rawIdea: current.rawIdea,
+        ideaUnderstanding: current.ideaUnderstanding,
+        clarification,
+        productAnalysis,
+        mvpScoping,
+        executionPlanning,
+      });
+
+      const finishedAt = new Date().toISOString();
+      // Review 不改变 ProjectStatus：保持 scoped，review-done 视图由 finalReview 派生
+      const saved: Project = {
+        ...current,
+        status: "scoped",
+        updatedAt: finishedAt,
+        finalReview: {
+          result,
+          completedAt: finishedAt,
+        },
+        lastRun: makeRun(
+          "final_review",
+          startedAt,
+          "succeeded",
+          latencyMs,
+          null,
+          finishedAt
+        ),
+      };
+      saveProject(saved);
+    } catch (error) {
+      const runError = toRunError(error);
+      const finishedAt = new Date().toISOString();
+      // 失败时保留全部前序结果（含 executionPlanning），只写失败运行记录
+      const failed: Project = {
+        ...current,
+        status: "failed",
+        updatedAt: finishedAt,
+        lastRun: makeRun(
+          "final_review",
+          startedAt,
+          "failed",
+          null,
+          runError,
+          finishedAt
+        ),
+      };
+      saveProject(failed);
+      setSessionError(runError.message);
+    } finally {
+      inFlightRef.current = false;
+      setLocalPhase((prev) =>
+        prev === "review-running" ? null : prev
+      );
+    }
+  }, [storedProject]);
+
   // ---- 自动运行（仅外部存储事件驱动）----
   const settings = hydrated ? loadSettings() : null;
   const hasKey = Boolean(settings?.apiKey.trim());
@@ -562,8 +746,36 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return "understanding-running";
     }
 
-    // Stage 4 已完成：刷新后直接展示结果，不再调用模型
-    if (project.mvpScoping) return "mvp-done";
+    // Final Review 进行中：优先于一切持久化视图
+    if (localPhase === "review-running") return "review-running";
+
+    // Final Review 已完成：刷新后直接展示结果，零重复模型调用
+    if (project.finalReview) {
+      if (localPhase === "execution-running") return "execution-running";
+      // 用户主动回看执行方案（Review 失败时也可查看原方案）
+      if (viewingExecution) return "execution-done";
+      if (last?.stage === "final_review" && last.status === "failed") {
+        return "review-error";
+      }
+      return "review-done";
+    }
+
+    // Stage 5 已完成：等待手动启动 Final Review（或展示 Review 运行/失败态）
+    if (project.executionPlanning) {
+      if (last?.stage === "final_review" && last.status === "failed") {
+        return "review-error";
+      }
+      return "execution-done";
+    }
+
+    // Stage 4 已完成：等待手动启动执行方案
+    if (project.mvpScoping) {
+      if (localPhase === "execution-running") return "execution-running";
+      if (last?.stage === "execution_planning" && last.status === "failed") {
+        return "execution-error";
+      }
+      return "mvp-done";
+    }
 
     // Stage 3 已完成：刷新后直接展示结果，不再调用模型
     if (project.productAnalysis) {
@@ -621,7 +833,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   if (!hydrated || storedProject === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="animate-spin text-muted" size={20} />
+        <Loader2 className="animate-spin text-ink-muted" size={20} />
       </div>
     );
   }
@@ -629,13 +841,13 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   if (storedProject === null) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="text-base font-medium text-strong">项目不存在</p>
-        <p className="text-sm text-muted">
+        <p className="text-base font-medium text-ink">项目不存在</p>
+        <p className="text-sm text-ink-secondary">
           该项目可能已被清除，本地数据无法恢复。
         </p>
         <Link
           href="/"
-          className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-[12px] bg-accent px-4 text-sm font-medium text-white hover:bg-accent-hover"
+          className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-[8px] bg-brand px-4 text-sm font-medium text-white hover:bg-brand-hover"
         >
           返回首页
         </Link>
@@ -649,27 +861,62 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     project.ideaUnderstanding?.suggestedName ?? "未命名产品想法";
 
   const navStage: WorkflowStage =
-    phase === "mvp-done" ||
-    phase === "mvp-running" ||
-    phase === "mvp-error"
-      ? "mvp_scoping"
-      : phase === "analyzed" ||
-        phase === "analysis-running" ||
-        phase === "analysis-error"
-        ? "product_analysis"
-        : phase === "understanding-running" || phase === "understanding-error"
-          ? "idea_understanding"
-          : "clarification";
+    phase === "execution-done" ||
+    phase === "execution-running" ||
+    phase === "execution-error" ||
+    phase === "review-done" ||
+    phase === "review-running" ||
+    phase === "review-error"
+      ? "execution_planning"
+      : phase === "mvp-done" ||
+        phase === "mvp-running" ||
+        phase === "mvp-error"
+        ? "mvp_scoping"
+        : phase === "analyzed" ||
+          phase === "analysis-running" ||
+          phase === "analysis-error"
+          ? "product_analysis"
+          : phase === "understanding-running" ||
+              phase === "understanding-error"
+            ? "idea_understanding"
+            : "clarification";
 
-  // 阶段标题
+  // 阶段标题元数据：编号 / English Label / 中文标题 / 阶段目的
   const stageHeader =
-    navStage === "mvp_scoping"
-      ? { stage: "Stage 4", title: "MVP 范围收敛" }
-      : navStage === "product_analysis"
-        ? { stage: "Stage 3", title: "产品分析" }
-        : navStage === "clarification"
-          ? { stage: "Stage 2", title: "信息补全" }
-          : { stage: "Stage 1", title: "产品想法" };
+    navStage === "execution_planning"
+      ? {
+          number: "05",
+          en: "Execute",
+          title: "执行方案",
+          purpose: "把冻结的 MVP 范围转化成可以立刻开工的结构、里程碑与任务。",
+        }
+      : navStage === "mvp_scoping"
+        ? {
+            number: "04",
+            en: "Scope",
+            title: "MVP 范围收敛",
+            purpose: "主动砍范围，只保留能验证首要假设的最小完整用户闭环。",
+          }
+        : navStage === "product_analysis"
+          ? {
+              number: "03",
+              en: "Analysis",
+              title: "产品分析",
+              purpose: "判断这个想法是否在解决一个足够明确、值得做的问题。",
+            }
+          : navStage === "clarification"
+            ? {
+                number: "02",
+                en: "Clarify",
+                title: "信息补全",
+                purpose: "只追问会影响产品方向的关键信息，其余以假设标注。",
+              }
+            : {
+                number: "01",
+                en: "Idea",
+                title: "产品想法",
+                purpose: "先用结构化视角复述你的原始想法，确认理解没有偏差。",
+              };
 
   const lastError = project.lastRun?.error?.message ?? null;
   const understandingLatency =
@@ -688,22 +935,30 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     project.lastRun?.stage === "mvp_scoping"
       ? project.lastRun.durationMs
       : null;
+  const executionLatency =
+    project.lastRun?.stage === "execution_planning"
+      ? project.lastRun.durationMs
+      : null;
+  const reviewLatency =
+    project.lastRun?.stage === "final_review"
+      ? project.lastRun.durationMs
+      : null;
   const autoCompleted =
     project.clarification !== undefined &&
     project.clarification.questions.length === 0;
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex h-[60px] shrink-0 items-center justify-between border-b border-subtle bg-surface px-6 lg:px-8">
+      <header className="flex h-[60px] shrink-0 items-center justify-between border-b border-border bg-paper/85 px-6 backdrop-blur lg:px-8">
         <div className="flex items-center gap-4">
           <Link
             href="/"
             aria-label="返回首页"
-            className="rounded-[8px] p-1.5 text-muted transition-colors duration-150 hover:bg-muted-bg hover:text-strong"
+            className="rounded-[8px] p-1.5 text-ink-secondary transition-colors duration-150 hover:bg-surface-secondary hover:text-ink"
           >
             <ArrowLeft size={16} />
           </Link>
-          <h1 className="text-[17px] font-semibold leading-6 text-strong">
+          <h1 className="max-w-[420px] truncate text-[17px] font-semibold leading-6 text-ink">
             {projectName}
           </h1>
           <StatusBadge phase={phase} />
@@ -711,49 +966,73 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="inline-flex h-9 items-center gap-1.5 rounded-[12px] px-3 text-sm text-body transition-colors duration-150 hover:bg-muted-bg"
+          className="inline-flex h-9 items-center gap-1.5 rounded-[8px] px-3 text-sm text-ink-secondary transition-colors duration-150 hover:bg-surface-secondary hover:text-ink"
         >
           <Settings size={15} />
-          设置
+          <span className="hidden sm:inline">设置</span>
         </button>
       </header>
 
       <div className="flex flex-1 flex-col lg:flex-row">
-        <aside className="shrink-0 border-b border-subtle bg-surface p-4 lg:w-[240px] lg:border-b-0 lg:border-r">
+        <aside className="shrink-0 border-b border-border bg-paper px-5 py-4 lg:w-[212px] lg:border-b-0 lg:border-r lg:px-4 lg:py-8">
           <WorkflowNav currentStage={navStage} />
         </aside>
 
         <main className="flex-1 px-5 py-7 sm:px-8 lg:px-10 lg:py-9">
           <div className="mx-auto w-full max-w-[880px]">
-            {/* 阶段标题 */}
-            <div className="mb-6">
-              <p className="text-xs font-medium uppercase tracking-wide text-faint">
-                {stageHeader.stage}
-              </p>
-              <h2 className="mt-1 text-xl font-semibold leading-8 text-strong">
-                {stageHeader.title}
-              </h2>
+            {/* Editorial Stage Header */}
+            <div className="mb-7 border-b border-border pb-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-mono text-[13px] font-medium text-brand">
+                      {stageHeader.number}
+                    </span>
+                    <span className="label-editorial">{stageHeader.en}</span>
+                  </div>
+                  <h2 className="mt-2 text-[26px] font-semibold leading-9 tracking-[-0.01em] text-ink">
+                    {stageHeader.title}
+                  </h2>
+                  <p className="mt-1.5 max-w-[620px] text-sm leading-6 text-ink-secondary">
+                    {stageHeader.purpose}
+                  </p>
+                </div>
+                <span className="mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-[8px] border border-border bg-surface px-2.5 py-1.5 text-[11px] text-ink-secondary">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />
+                  {MODEL_OPTIONS[0].label}
+                </span>
+              </div>
               {phase === "questions" && (
-                <p className="mt-1 text-sm text-muted">
+                <p className="mt-3 text-sm text-ink-secondary">
                   还有几件会影响产品方向的事情需要确认。
                 </p>
               )}
               {phase === "analysis-running" && (
-                <p className="mt-1 text-sm text-muted">
+                <p className="mt-3 text-sm text-ink-secondary">
                   正在分析这个产品是否解决了一个足够明确的问题。
                 </p>
               )}
               {phase === "mvp-running" && (
-                <p className="mt-1 text-sm text-muted">
+                <p className="mt-3 text-sm text-ink-secondary">
                   正在收敛第一版产品范围，主动保留最小完整闭环。
+                </p>
+              )}
+              {phase === "execution-running" && (
+                <p className="mt-3 text-sm text-ink-secondary">
+                  正在把 MVP 转化成可以开始开发的计划。
+                </p>
+              )}
+              {phase === "review-running" && (
+                <p className="mt-3 text-sm text-ink-secondary">
+                  正在检查整份立项方案的一致性。
                 </p>
               )}
             </div>
 
             {/* 原始想法卡片：始终展示 */}
-            <div className="mb-6 rounded-[12px] border border-subtle bg-surface px-5 py-4">
-              <p className="mb-2 text-xs font-medium text-muted">原始想法</p>
-              <p className="whitespace-pre-wrap text-sm leading-7 text-body">
+            <div className="mb-6 rounded-[12px] border border-border bg-surface px-5 py-4">
+              <p className="label-editorial mb-2">Raw Idea · 原始想法</p>
+              <p className="whitespace-pre-wrap text-sm leading-7 text-ink-secondary">
                 {project.rawIdea}
               </p>
             </div>
@@ -792,17 +1071,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
                 onToggle={(event) =>
                   setShowUnderstanding(event.currentTarget.open)
                 }
-                className="group mb-6 rounded-[12px] border border-subtle bg-surface"
+                className="group mb-6 rounded-[12px] border border-border bg-surface"
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-sm font-medium text-body [&::-webkit-details-marker]:hidden">
-                  查看首次理解结果
+                <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-sm font-medium text-ink-secondary transition-colors hover:text-ink [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="font-mono text-[11px] text-brand">01</span>
+                    查看首次理解结果
+                  </span>
                   {showUnderstanding ? (
-                    <ChevronUp size={15} className="text-muted" />
+                    <ChevronUp size={15} className="text-ink-muted" />
                   ) : (
-                    <ChevronDown size={15} className="text-muted" />
+                    <ChevronDown size={15} className="text-ink-muted" />
                   )}
                 </summary>
-                <div className="border-t border-subtle px-5 py-5">
+                <div className="border-t border-border px-5 py-5">
                   <UnderstandingResult
                     result={project.ideaUnderstanding}
                     latencyMs={understandingLatency}
@@ -905,6 +1187,59 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
               <MvpScopingResultView
                 result={project.mvpScoping.result}
                 latencyMs={mvpLatency}
+                onStartExecution={() => void runExecutionPlanning()}
+                executionStarting={localPhase === "execution-running"}
+              />
+            )}
+
+            {/* ---- Stage 5：Execution Planning ---- */}
+            {phase === "execution-running" && <ExecutionPlanningProgress />}
+
+            {phase === "execution-error" && (
+              <ErrorPanel
+                title="执行方案没有生成完成"
+                message={
+                  !hasKey
+                    ? "尚未配置 API Key，请点击右上角设置完成配置后重试。"
+                    : sessionError ?? lastError ?? "处理失败，请稍后重试。"
+                }
+                showSettingsAction={!hasKey}
+                onSettings={() => setSettingsOpen(true)}
+                onRetry={() => void runExecutionPlanning()}
+              />
+            )}
+
+            {phase === "execution-done" && project.executionPlanning && (
+              <ExecutionPlanningResultView
+                result={project.executionPlanning.result}
+                latencyMs={executionLatency}
+                onStartReview={() => void runFinalReview()}
+                reviewStarting={localPhase === "review-running"}
+              />
+            )}
+
+            {/* ---- Final Review：挂在 Stage 5，不新增主导航 ---- */}
+            {phase === "review-running" && <FinalReviewProgress />}
+
+            {phase === "review-error" && (
+              <ErrorPanel
+                title="最终检查没有完成"
+                message={
+                  !hasKey
+                    ? "尚未配置 API Key，请点击右上角设置完成配置后重试。"
+                    : sessionError ?? lastError ?? "处理失败，请稍后重试。"
+                }
+                showSettingsAction={!hasKey}
+                onSettings={() => setSettingsOpen(true)}
+                onRetry={() => void runFinalReview()}
+              />
+            )}
+
+            {phase === "review-done" && project.finalReview && (
+              <FinalReviewResultView
+                result={project.finalReview.result}
+                latencyMs={reviewLatency}
+                onViewExecution={() => setViewingExecution(true)}
               />
             )}
           </div>
@@ -943,7 +1278,7 @@ function ErrorPanel({
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[12px] border border-subtle bg-surface px-3.5 text-sm text-body transition-colors duration-150 hover:bg-muted-bg"
+              className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-border bg-surface px-3.5 text-sm text-ink-secondary transition-colors duration-150 hover:bg-surface-secondary hover:text-ink"
             >
               <RefreshCw size={14} />
               重试
@@ -952,7 +1287,7 @@ function ErrorPanel({
               <button
                 type="button"
                 onClick={onSettings}
-                className="inline-flex h-9 items-center rounded-[12px] bg-accent px-3.5 text-sm font-medium text-white hover:bg-accent-hover"
+                className="inline-flex h-9 items-center rounded-[8px] bg-brand px-3.5 text-sm font-medium text-white hover:bg-brand-hover"
               >
                 打开设置
               </button>
@@ -965,9 +1300,25 @@ function ErrorPanel({
 }
 
 function StatusBadge({ phase }: { phase: Phase | null }) {
+  if (phase === "review-done") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-aubergine-soft px-2 py-0.5 text-xs text-aubergine">
+        <CheckCircle2 size={12} />
+        立项检查完成
+      </span>
+    );
+  }
+  if (phase === "execution-done") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-aubergine-soft px-2 py-0.5 text-xs text-aubergine">
+        <CheckCircle2 size={12} />
+        执行方案完成
+      </span>
+    );
+  }
   if (phase === "mvp-done") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-[8px] bg-success-soft px-2 py-0.5 text-xs text-success">
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-aubergine-soft px-2 py-0.5 text-xs text-aubergine">
         <CheckCircle2 size={12} />
         MVP 收敛完成
       </span>
@@ -975,7 +1326,7 @@ function StatusBadge({ phase }: { phase: Phase | null }) {
   }
   if (phase === "analyzed") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-[8px] bg-success-soft px-2 py-0.5 text-xs text-success">
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-aubergine-soft px-2 py-0.5 text-xs text-aubergine">
         <CheckCircle2 size={12} />
         产品分析完成
       </span>
@@ -983,7 +1334,7 @@ function StatusBadge({ phase }: { phase: Phase | null }) {
   }
   if (phase === "clarified") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-[8px] bg-success-soft px-2 py-0.5 text-xs text-success">
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-aubergine-soft px-2 py-0.5 text-xs text-aubergine">
         <CheckCircle2 size={12} />
         信息补全完成
       </span>
@@ -994,10 +1345,12 @@ function StatusBadge({ phase }: { phase: Phase | null }) {
     phase === "questions-running" ||
     phase === "synthesis-running" ||
     phase === "analysis-running" ||
-    phase === "mvp-running"
+    phase === "mvp-running" ||
+    phase === "execution-running" ||
+    phase === "review-running"
   ) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-[8px] bg-accent-soft px-2 py-0.5 text-xs text-accent">
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-brand-soft px-2 py-0.5 text-xs text-brand">
         <Loader2 size={12} className="animate-spin" />
         AI 处理中
       </span>
@@ -1008,7 +1361,9 @@ function StatusBadge({ phase }: { phase: Phase | null }) {
     phase === "questions-error" ||
     phase === "synthesis-error" ||
     phase === "analysis-error" ||
-    phase === "mvp-error"
+    phase === "mvp-error" ||
+    phase === "execution-error" ||
+    phase === "review-error"
   ) {
     return (
       <span className="rounded-[8px] bg-danger-soft px-2 py-0.5 text-xs text-danger">
@@ -1018,7 +1373,7 @@ function StatusBadge({ phase }: { phase: Phase | null }) {
   }
   if (phase === "questions") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-[8px] bg-accent-soft px-2 py-0.5 text-xs text-accent">
+      <span className="inline-flex items-center gap-1 rounded-[8px] bg-brand-soft px-2 py-0.5 text-xs text-brand">
         待确认
       </span>
     );

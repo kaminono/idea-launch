@@ -2,10 +2,19 @@
 // 与运行时校验。校验失败由调用方归一化为 AI_INVALID_RESPONSE。
 
 import type {
+  AdjustmentPriority,
+  AdjustmentTargetStage,
   ClarificationAnswer,
   ClarificationQuestions,
   ClarificationQuestion,
   ClarifiedContext,
+  ConsistencyCheckStatus,
+  ExecutionPlanningResult,
+  ExecutionPlanningState,
+  ExecutionRiskImpact,
+  FinalReviewResult,
+  FinalReviewState,
+  FinalReviewVerdictStatus,
   HypothesisImportance,
   IdeaUnderstanding,
   MvpRiskImpact,
@@ -13,6 +22,8 @@ import type {
   ProductAnalysisResult,
   ProductRiskType,
   RiskSeverity,
+  TaskEffort,
+  TaskType,
 } from "@/lib/types";
 
 const STRING_ARRAY_SCHEMA = {
@@ -807,5 +818,688 @@ export function isMvpScopingResult(
     Array.isArray(candidate.validationPlan) &&
     candidate.validationPlan.every(isValidationAction) &&
     isScopeSummary(candidate.scopeSummary)
+  );
+}
+
+// ---- Execution Planning ----
+
+const TASK_TYPES = [
+  "product",
+  "frontend",
+  "backend",
+  "ai",
+  "data",
+  "integration",
+  "test",
+  "release",
+] as const;
+const TASK_EFFORTS = ["S", "M", "L"] as const;
+const EXECUTION_RISK_IMPACTS = ["high", "medium", "low"] as const;
+
+const EXECUTION_DEFINITION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    goal: { type: "string" },
+    deliveryTarget: { type: "string" },
+    primaryUser: { type: "string" },
+    coreScenario: { type: "string" },
+  },
+  required: ["goal", "deliveryTarget", "primaryUser", "coreScenario"],
+} as const;
+
+const SURFACE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+    purpose: { type: "string" },
+    keyActions: STRING_ARRAY_SCHEMA,
+  },
+  required: ["name", "purpose", "keyActions"],
+} as const;
+
+const PRODUCT_STRUCTURE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    surfaces: { type: "array", items: SURFACE_SCHEMA },
+    userFlow: STRING_ARRAY_SCHEMA,
+  },
+  required: ["surfaces", "userFlow"],
+} as const;
+
+const TECH_LAYER_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    approach: { type: "string" },
+    responsibilities: STRING_ARRAY_SCHEMA,
+  },
+  required: ["approach", "responsibilities"],
+} as const;
+
+const AI_PLAN_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    needed: { type: "boolean" },
+    role: { type: "string" },
+    integration: { type: "string" },
+  },
+  required: ["needed", "role", "integration"],
+} as const;
+
+const STORAGE_PLAN_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    approach: { type: "string" },
+    reason: { type: "string" },
+  },
+  required: ["approach", "reason"],
+} as const;
+
+const EXTERNAL_SERVICE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+    purpose: { type: "string" },
+    required: { type: "boolean" },
+  },
+  required: ["name", "purpose", "required"],
+} as const;
+
+const TECHNICAL_PLAN_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    architecture: { type: "string" },
+    frontend: TECH_LAYER_SCHEMA,
+    backend: TECH_LAYER_SCHEMA,
+    ai: AI_PLAN_SCHEMA,
+    storage: STORAGE_PLAN_SCHEMA,
+    externalServices: { type: "array", items: EXTERNAL_SERVICE_SCHEMA },
+  },
+  required: [
+    "architecture",
+    "frontend",
+    "backend",
+    "ai",
+    "storage",
+    "externalServices",
+  ],
+} as const;
+
+const DATA_OBJECT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+    purpose: { type: "string" },
+    keyFields: STRING_ARRAY_SCHEMA,
+  },
+  required: ["name", "purpose", "keyFields"],
+} as const;
+
+const MILESTONE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    id: { type: "string" },
+    name: { type: "string" },
+    goal: { type: "string" },
+    deliverables: STRING_ARRAY_SCHEMA,
+    acceptance: STRING_ARRAY_SCHEMA,
+  },
+  required: ["id", "name", "goal", "deliverables", "acceptance"],
+} as const;
+
+const EXECUTION_TASK_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    id: { type: "string" },
+    milestoneId: { type: "string" },
+    title: { type: "string" },
+    objective: { type: "string" },
+    type: {
+      type: "string",
+      enum: [
+        "product",
+        "frontend",
+        "backend",
+        "ai",
+        "data",
+        "integration",
+        "test",
+        "release",
+      ],
+    },
+    dependencies: STRING_ARRAY_SCHEMA,
+    acceptance: STRING_ARRAY_SCHEMA,
+    effort: { type: "string", enum: ["S", "M", "L"] },
+  },
+  required: [
+    "id",
+    "milestoneId",
+    "title",
+    "objective",
+    "type",
+    "dependencies",
+    "acceptance",
+    "effort",
+  ],
+} as const;
+
+const VALIDATION_CHECKPOINT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    afterMilestone: { type: "string" },
+    whatToValidate: { type: "string" },
+    signal: { type: "string" },
+  },
+  required: ["afterMilestone", "whatToValidate", "signal"],
+} as const;
+
+const EXECUTION_RISK_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    risk: { type: "string" },
+    impact: { type: "string", enum: ["high", "medium", "low"] },
+    response: { type: "string" },
+  },
+  required: ["risk", "impact", "response"],
+} as const;
+
+const EXECUTION_SUMMARY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    firstActions: STRING_ARRAY_SCHEMA,
+    definitionOfDone: STRING_ARRAY_SCHEMA,
+    readyForFinalReview: { type: "boolean" },
+  },
+  required: ["firstActions", "definitionOfDone", "readyForFinalReview"],
+} as const;
+
+/** Execution Planning 节点 Responses API JSON Schema（strict） */
+export const EXECUTION_PLANNING_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    executionDefinition: EXECUTION_DEFINITION_SCHEMA,
+    productStructure: PRODUCT_STRUCTURE_SCHEMA,
+    technicalPlan: TECHNICAL_PLAN_SCHEMA,
+    dataModel: { type: "array", items: DATA_OBJECT_SCHEMA },
+    milestones: { type: "array", items: MILESTONE_SCHEMA },
+    tasks: { type: "array", items: EXECUTION_TASK_SCHEMA },
+    validationCheckpoints: { type: "array", items: VALIDATION_CHECKPOINT_SCHEMA },
+    executionRisks: { type: "array", items: EXECUTION_RISK_SCHEMA },
+    executionSummary: EXECUTION_SUMMARY_SCHEMA,
+  },
+  required: [
+    "executionDefinition",
+    "productStructure",
+    "technicalPlan",
+    "dataModel",
+    "milestones",
+    "tasks",
+    "validationCheckpoints",
+    "executionRisks",
+    "executionSummary",
+  ],
+} as const;
+
+function isExecutionDefinition(
+  value: unknown
+): value is ExecutionPlanningResult["executionDefinition"] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.goal === "string" &&
+    typeof candidate.deliveryTarget === "string" &&
+    typeof candidate.primaryUser === "string" &&
+    typeof candidate.coreScenario === "string"
+  );
+}
+
+function isSurface(
+  value: unknown
+): value is ExecutionPlanningResult["productStructure"]["surfaces"][number] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.name === "string" &&
+    typeof candidate.purpose === "string" &&
+    isStringArray(candidate.keyActions)
+  );
+}
+
+function isProductStructure(
+  value: unknown
+): value is ExecutionPlanningResult["productStructure"] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    Array.isArray(candidate.surfaces) &&
+    candidate.surfaces.every(isSurface) &&
+    isStringArray(candidate.userFlow)
+  );
+}
+
+function isTechLayer(
+  value: unknown
+): value is ExecutionPlanningResult["technicalPlan"]["frontend"] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.approach === "string" &&
+    isStringArray(candidate.responsibilities)
+  );
+}
+
+function isAiPlan(
+  value: unknown
+): value is ExecutionPlanningResult["technicalPlan"]["ai"] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.needed === "boolean" &&
+    typeof candidate.role === "string" &&
+    typeof candidate.integration === "string"
+  );
+}
+
+function isStoragePlan(
+  value: unknown
+): value is ExecutionPlanningResult["technicalPlan"]["storage"] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.approach === "string" &&
+    typeof candidate.reason === "string"
+  );
+}
+
+function isExternalService(
+  value: unknown
+): value is ExecutionPlanningResult["technicalPlan"]["externalServices"][number] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.name === "string" &&
+    typeof candidate.purpose === "string" &&
+    typeof candidate.required === "boolean"
+  );
+}
+
+function isTechnicalPlan(
+  value: unknown
+): value is ExecutionPlanningResult["technicalPlan"] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.architecture === "string" &&
+    isTechLayer(candidate.frontend) &&
+    isTechLayer(candidate.backend) &&
+    isAiPlan(candidate.ai) &&
+    isStoragePlan(candidate.storage) &&
+    Array.isArray(candidate.externalServices) &&
+    candidate.externalServices.every(isExternalService)
+  );
+}
+
+function isDataObject(
+  value: unknown
+): value is ExecutionPlanningResult["dataModel"][number] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.name === "string" &&
+    typeof candidate.purpose === "string" &&
+    isStringArray(candidate.keyFields)
+  );
+}
+
+function isMilestone(
+  value: unknown
+): value is ExecutionPlanningResult["milestones"][number] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.goal === "string" &&
+    isStringArray(candidate.deliverables) &&
+    isStringArray(candidate.acceptance)
+  );
+}
+
+function isExecutionTask(
+  value: unknown
+): value is ExecutionPlanningResult["tasks"][number] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.milestoneId === "string" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.objective === "string" &&
+    (TASK_TYPES as readonly string[]).includes(
+      candidate.type as TaskType
+    ) &&
+    isStringArray(candidate.dependencies) &&
+    isStringArray(candidate.acceptance) &&
+    (TASK_EFFORTS as readonly string[]).includes(
+      candidate.effort as TaskEffort
+    )
+  );
+}
+
+function isValidationCheckpoint(
+  value: unknown
+): value is ExecutionPlanningResult["validationCheckpoints"][number] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.afterMilestone === "string" &&
+    typeof candidate.whatToValidate === "string" &&
+    typeof candidate.signal === "string"
+  );
+}
+
+function isExecutionRisk(
+  value: unknown
+): value is ExecutionPlanningResult["executionRisks"][number] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.risk === "string" &&
+    (EXECUTION_RISK_IMPACTS as readonly string[]).includes(
+      candidate.impact as ExecutionRiskImpact
+    ) &&
+    typeof candidate.response === "string"
+  );
+}
+
+function isExecutionSummary(
+  value: unknown
+): value is ExecutionPlanningResult["executionSummary"] {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    isStringArray(candidate.firstActions) &&
+    isStringArray(candidate.definitionOfDone) &&
+    typeof candidate.readyForFinalReview === "boolean"
+  );
+}
+
+/** 运行时守卫：校验 Execution Planning 输出 */
+export function isExecutionPlanningResult(
+  value: unknown
+): value is ExecutionPlanningResult {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    isExecutionDefinition(candidate.executionDefinition) &&
+    isProductStructure(candidate.productStructure) &&
+    isTechnicalPlan(candidate.technicalPlan) &&
+    Array.isArray(candidate.dataModel) &&
+    candidate.dataModel.every(isDataObject) &&
+    Array.isArray(candidate.milestones) &&
+    candidate.milestones.every(isMilestone) &&
+    Array.isArray(candidate.tasks) &&
+    candidate.tasks.every(isExecutionTask) &&
+    Array.isArray(candidate.validationCheckpoints) &&
+    candidate.validationCheckpoints.every(isValidationCheckpoint) &&
+    Array.isArray(candidate.executionRisks) &&
+    candidate.executionRisks.every(isExecutionRisk) &&
+    isExecutionSummary(candidate.executionSummary)
+  );
+}
+
+/** 运行时守卫：校验 Project 上的 Execution Planning 状态 */
+export function isExecutionPlanningState(
+  value: unknown
+): value is ExecutionPlanningState {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    isExecutionPlanningResult(candidate.result) &&
+    typeof candidate.completedAt === "string"
+  );
+}
+
+// ---- Final Review（最终一致性审计）----
+
+const FINAL_REVIEW_VERDICT_STATUSES = ["ready", "needs_attention"] as const;
+const CONSISTENCY_CHECK_STATUSES = ["pass", "warning"] as const;
+const ADJUSTMENT_PRIORITIES = ["high", "medium", "low"] as const;
+const ADJUSTMENT_TARGET_STAGES = [
+  "clarification",
+  "product_analysis",
+  "mvp",
+  "execution",
+] as const;
+
+/** Responses API text.format 使用的 JSON Schema（strict） */
+export const FINAL_REVIEW_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    verdict: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: {
+          type: "string",
+          enum: FINAL_REVIEW_VERDICT_STATUSES,
+        },
+        summary: { type: "string" },
+      },
+      required: ["status", "summary"],
+    },
+    consistencyChecks: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          dimension: { type: "string" },
+          status: {
+            type: "string",
+            enum: CONSISTENCY_CHECK_STATUSES,
+          },
+          finding: { type: "string" },
+        },
+        required: ["dimension", "status", "finding"],
+      },
+    },
+    scopeIntegrity: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        passed: { type: "boolean" },
+        reintroducedItems: STRING_ARRAY_SCHEMA,
+        finding: { type: "string" },
+      },
+      required: ["passed", "reintroducedItems", "finding"],
+    },
+    factIntegrity: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        passed: { type: "boolean" },
+        issues: STRING_ARRAY_SCHEMA,
+        finding: { type: "string" },
+      },
+      required: ["passed", "issues", "finding"],
+    },
+    executionReadiness: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        passed: { type: "boolean" },
+        strengths: STRING_ARRAY_SCHEMA,
+        gaps: STRING_ARRAY_SCHEMA,
+      },
+      required: ["passed", "strengths", "gaps"],
+    },
+    recommendedAdjustments: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          priority: {
+            type: "string",
+            enum: ADJUSTMENT_PRIORITIES,
+          },
+          targetStage: {
+            type: "string",
+            enum: ADJUSTMENT_TARGET_STAGES,
+          },
+          adjustment: { type: "string" },
+          reason: { type: "string" },
+        },
+        required: ["priority", "targetStage", "adjustment", "reason"],
+      },
+    },
+    finalSummary: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        readyToBuild: { type: "boolean" },
+        firstAction: { type: "string" },
+        keepInMind: STRING_ARRAY_SCHEMA,
+      },
+      required: ["readyToBuild", "firstAction", "keepInMind"],
+    },
+  },
+  required: [
+    "verdict",
+    "consistencyChecks",
+    "scopeIntegrity",
+    "factIntegrity",
+    "executionReadiness",
+    "recommendedAdjustments",
+    "finalSummary",
+  ],
+} as const;
+
+/** 运行时守卫：校验 Final Review 输出 */
+export function isFinalReviewResult(
+  value: unknown
+): value is FinalReviewResult {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+
+  const verdict = candidate.verdict;
+  if (typeof verdict !== "object" || verdict === null) return false;
+  const verdictRecord = verdict as Record<string, unknown>;
+  if (
+    !(FINAL_REVIEW_VERDICT_STATUSES as readonly string[]).includes(
+      verdictRecord.status as FinalReviewVerdictStatus
+    ) ||
+    typeof verdictRecord.summary !== "string"
+  ) {
+    return false;
+  }
+
+  const checksValid =
+    Array.isArray(candidate.consistencyChecks) &&
+    candidate.consistencyChecks.every((item) => {
+      if (typeof item !== "object" || item === null) return false;
+      const check = item as Record<string, unknown>;
+      return (
+        typeof check.dimension === "string" &&
+        (CONSISTENCY_CHECK_STATUSES as readonly string[]).includes(
+          check.status as ConsistencyCheckStatus
+        ) &&
+        typeof check.finding === "string"
+      );
+    });
+  if (!checksValid) return false;
+
+  const scopeValid =
+    typeof candidate.scopeIntegrity === "object" &&
+    candidate.scopeIntegrity !== null &&
+    (() => {
+      const scope = candidate.scopeIntegrity as Record<string, unknown>;
+      return (
+        typeof scope.passed === "boolean" &&
+        isStringArray(scope.reintroducedItems) &&
+        typeof scope.finding === "string"
+      );
+    })();
+  if (!scopeValid) return false;
+
+  const factValid =
+    typeof candidate.factIntegrity === "object" &&
+    candidate.factIntegrity !== null &&
+    (() => {
+      const fact = candidate.factIntegrity as Record<string, unknown>;
+      return (
+        typeof fact.passed === "boolean" &&
+        isStringArray(fact.issues) &&
+        typeof fact.finding === "string"
+      );
+    })();
+  if (!factValid) return false;
+
+  const readinessValid =
+    typeof candidate.executionReadiness === "object" &&
+    candidate.executionReadiness !== null &&
+    (() => {
+      const readiness = candidate.executionReadiness as Record<string, unknown>;
+      return (
+        typeof readiness.passed === "boolean" &&
+        isStringArray(readiness.strengths) &&
+        isStringArray(readiness.gaps)
+      );
+    })();
+  if (!readinessValid) return false;
+
+  const adjustmentsValid =
+    Array.isArray(candidate.recommendedAdjustments) &&
+    candidate.recommendedAdjustments.every((item) => {
+      if (typeof item !== "object" || item === null) return false;
+      const adjustment = item as Record<string, unknown>;
+      return (
+        (ADJUSTMENT_PRIORITIES as readonly string[]).includes(
+          adjustment.priority as AdjustmentPriority
+        ) &&
+        (ADJUSTMENT_TARGET_STAGES as readonly string[]).includes(
+          adjustment.targetStage as AdjustmentTargetStage
+        ) &&
+        typeof adjustment.adjustment === "string" &&
+        typeof adjustment.reason === "string"
+      );
+    });
+  if (!adjustmentsValid) return false;
+
+  const summary = candidate.finalSummary;
+  if (typeof summary !== "object" || summary === null) return false;
+  const summaryRecord = summary as Record<string, unknown>;
+  return (
+    typeof summaryRecord.readyToBuild === "boolean" &&
+    typeof summaryRecord.firstAction === "string" &&
+    isStringArray(summaryRecord.keepInMind)
+  );
+}
+
+/** 运行时守卫：校验 Project 上的 Final Review 状态 */
+export function isFinalReviewState(
+  value: unknown
+): value is FinalReviewState {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    isFinalReviewResult(candidate.result) &&
+    typeof candidate.completedAt === "string"
   );
 }

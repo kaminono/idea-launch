@@ -1,62 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-interface StepProgressProps {
-  steps: readonly string[];
-  intervalMs?: number;
-}
-
-/** 产品级运行状态：只展示阶段动作，不展示模型思维链 */
-function StepProgress({ steps, intervalMs = 1900 }: StepProgressProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveIndex((prev) => (prev < steps.length - 1 ? prev + 1 : prev));
-    }, intervalMs);
-    return () => clearInterval(timer);
-  }, [steps.length, intervalMs]);
-
-  return (
-    <div className="animate-fade-in">
-      <div className="rounded-[16px] border border-subtle bg-surface p-6">
-        <ul className="space-y-4">
-          {steps.map((label, index) => {
-            const state =
-              index < activeIndex
-                ? "done"
-                : index === activeIndex
-                  ? "active"
-                  : "pending";
-            return (
-              <li key={label} className="flex items-center gap-3">
-                <span
-                  className={[
-                    "h-2 w-2 shrink-0 rounded-full transition-colors duration-200",
-                    state === "done"
-                      ? "bg-success"
-                      : state === "active"
-                        ? "animate-pulse bg-accent"
-                        : "bg-subtle",
-                  ].join(" ")}
-                />
-                <span
-                  className={[
-                    "text-sm transition-colors duration-200",
-                    state === "pending" ? "text-faint" : "text-body",
-                  ].join(" ")}
-                >
-                  {label}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </div>
-  );
-}
+import { StepProgress } from "@/components/workspace/step-progress";
 
 const MVP_SCOPING_STEPS = [
   "正在确定第一版最重要的验证目标",
@@ -68,5 +12,7 @@ const MVP_SCOPING_STEPS = [
 ] as const;
 
 export function MvpScopingProgress() {
-  return <StepProgress steps={MVP_SCOPING_STEPS} />;
+  return (
+    <StepProgress steps={MVP_SCOPING_STEPS} label="Working · 正在收敛 MVP" />
+  );
 }

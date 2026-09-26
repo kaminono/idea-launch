@@ -111,13 +111,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               placeholder="请输入豆包 API Key"
               autoComplete="off"
               spellCheck={false}
-              className="h-10 w-full rounded-[12px] border border-subtle bg-surface px-3 pr-10 text-sm text-strong outline-none transition-shadow duration-150 placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/15"
+              className="h-10 w-full rounded-[12px] border border-border bg-surface px-3 pr-10 text-sm text-ink outline-none transition-shadow duration-150 placeholder:text-ink-muted focus:border-brand focus:ring-2 focus:ring-brand/15"
             />
             <button
               type="button"
               onClick={() => setShowKey((prev) => !prev)}
               aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[8px] p-1.5 text-muted hover:bg-muted-bg hover:text-strong transition-colors duration-150"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[8px] p-1.5 text-ink-secondary hover:bg-surface-secondary hover:text-ink transition-colors duration-150"
             >
               {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -125,9 +125,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </Field>
 
         <Field label="模型">
-          <div className="flex h-10 items-center justify-between rounded-[12px] border border-subtle bg-muted-bg px-3">
-            <span className="text-sm text-strong">{modelOption.label}</span>
-            <span className="font-mono text-xs text-muted">
+          <div className="flex h-10 items-center justify-between rounded-[12px] border border-border bg-surface-secondary px-3">
+            <span className="text-sm text-ink">{modelOption.label}</span>
+            <span className="font-mono text-xs text-ink-secondary">
               {modelOption.id}
             </span>
           </div>
@@ -143,12 +143,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               value={form.baseUrl}
               onChange={(event) => update({ baseUrl: event.target.value })}
               spellCheck={false}
-              className="h-10 min-w-0 flex-1 rounded-[12px] border border-subtle bg-surface px-3 font-mono text-xs text-strong outline-none transition-shadow duration-150 focus:border-accent focus:ring-2 focus:ring-accent/15"
+              className="h-10 min-w-0 flex-1 rounded-[12px] border border-border bg-surface px-3 font-mono text-xs text-ink outline-none transition-shadow duration-150 focus:border-brand focus:ring-2 focus:ring-brand/15"
             />
             <button
               type="button"
               onClick={() => update({ baseUrl: DEFAULT_BASE_URL })}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[12px] border border-subtle bg-surface px-3 text-sm text-body hover:bg-muted-bg transition-colors duration-150"
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[12px] border border-border bg-surface px-3 text-sm text-ink-secondary hover:bg-surface-secondary transition-colors duration-150"
             >
               <RotateCcw size={14} />
               恢复默认
@@ -179,7 +179,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-subtle pt-4">
+        <div className="flex items-center justify-between border-t border-border pt-4">
           <button
             type="button"
             onClick={handleClear}
@@ -198,7 +198,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               type="button"
               onClick={handleTest}
               disabled={testState.status === "testing" || !form.apiKey.trim()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[12px] border border-subtle bg-surface px-3.5 text-sm text-body hover:bg-muted-bg disabled:cursor-not-allowed disabled:opacity-50 transition-colors duration-150"
+              className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-border bg-surface px-3.5 text-sm text-ink-secondary hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-50 transition-colors duration-150"
             >
               {testState.status === "testing" ? (
                 <>
@@ -212,7 +212,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <button
               type="button"
               onClick={persist}
-              className="inline-flex h-9 items-center rounded-[12px] bg-accent px-4 text-sm font-medium text-white hover:bg-accent-hover transition-colors duration-150"
+              className="inline-flex h-9 items-center rounded-[8px] bg-brand px-4 text-sm font-medium text-white hover:bg-brand-hover transition-colors duration-150"
             >
               保存
             </button>
@@ -234,12 +234,12 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-strong">
+      <label className="mb-1.5 block text-sm font-medium text-ink">
         {label}
       </label>
       {children}
       {hint ? (
-        <p className="mt-1.5 text-xs leading-5 text-muted">{hint}</p>
+        <p className="mt-1.5 text-xs leading-5 text-ink-secondary">{hint}</p>
       ) : null}
     </div>
   );

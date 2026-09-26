@@ -7,6 +7,8 @@ import type {
   ClarificationState,
   ClarificationQuestion,
   ClarifiedContext,
+  ExecutionPlanningResult,
+  FinalReviewResult,
   IdeaUnderstanding,
   MvpScopingResult,
   ProductAnalysisResult,
@@ -146,6 +148,54 @@ export function scopeMvp(args: {
     ideaUnderstanding: args.ideaUnderstanding,
     clarification: args.clarification,
     productAnalysis: args.productAnalysis,
+  });
+}
+
+export function planExecution(args: {
+  settings: Settings;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+  mvpScoping: MvpScopingResult;
+}): Promise<{ executionPlanning: ExecutionPlanningResult; latencyMs: number }> {
+  return postJson<{
+    executionPlanning: ExecutionPlanningResult;
+    latencyMs: number;
+  }>("/api/ai/plan/execution", {
+    apiKey: args.settings.apiKey,
+    baseUrl: args.settings.baseUrl,
+    model: args.settings.model,
+    rawIdea: args.rawIdea,
+    ideaUnderstanding: args.ideaUnderstanding,
+    clarification: args.clarification,
+    productAnalysis: args.productAnalysis,
+    mvpScoping: args.mvpScoping,
+  });
+}
+
+export function reviewFinal(args: {
+  settings: Settings;
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;
+  productAnalysis: ProductAnalysisResult;
+  mvpScoping: MvpScopingResult;
+  executionPlanning: ExecutionPlanningResult;
+}): Promise<{ finalReview: FinalReviewResult; latencyMs: number }> {
+  return postJson<{
+    finalReview: FinalReviewResult;
+    latencyMs: number;
+  }>("/api/ai/review/final", {
+    apiKey: args.settings.apiKey,
+    baseUrl: args.settings.baseUrl,
+    model: args.settings.model,
+    rawIdea: args.rawIdea,
+    ideaUnderstanding: args.ideaUnderstanding,
+    clarification: args.clarification,
+    productAnalysis: args.productAnalysis,
+    mvpScoping: args.mvpScoping,
+    executionPlanning: args.executionPlanning,
   });
 }
 

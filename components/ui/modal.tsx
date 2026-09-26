@@ -28,23 +28,23 @@ export function Modal({ open, title, onClose, children }: ModalProps) {
       role="presentation"
       onClick={onClose}
     >
-      <div className="absolute inset-0 bg-[rgba(17,24,39,0.32)]" />
+      <div className="absolute inset-0 bg-[rgba(29,27,28,0.36)]" />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative w-full max-w-[520px] rounded-[16px] bg-surface shadow-[var(--shadow-pop)] animate-fade-slide-in"
+        className="relative w-full max-w-[520px] rounded-[16px] border border-border bg-surface shadow-[var(--shadow-pop)] animate-fade-slide-in"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-subtle px-6 py-4">
-          <h2 className="text-base font-semibold leading-6 text-strong">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="text-base font-semibold leading-6 text-ink">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="关闭"
-            className="rounded-[8px] p-1.5 text-muted hover:bg-muted-bg hover:text-strong transition-colors duration-150"
+            className="rounded-[8px] p-1.5 text-ink-muted hover:bg-surface-secondary hover:text-ink transition-colors duration-150"
           >
             <X size={16} />
           </button>

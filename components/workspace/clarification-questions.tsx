@@ -152,25 +152,27 @@ export function ClarificationQuestionsFlow({
   return (
     <div>
       {/* 问题进度 */}
-      <div className="mb-6">
+      <div className="mx-auto mb-6 max-w-[720px]">
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-sm font-medium text-body">
-            问题进度
-            <span className="ml-2 font-mono text-accent">
-              {currentIndex + 1} / {questions.length}
+          <p className="label-editorial">
+            Question
+            <span className="ml-2 font-mono text-brand">
+              {String(currentIndex + 1).padStart(2, "0")} / {String(questions.length).padStart(2, "0")}
             </span>
           </p>
-          <p className="text-xs text-faint">已回答 {answeredCount} 题</p>
+          <p className="font-mono text-[11px] text-ink-muted">
+            已回答 {answeredCount} 题
+          </p>
         </div>
         <div
-          className="h-1.5 w-full overflow-hidden rounded-full bg-muted-bg"
+          className="h-1 w-full overflow-hidden rounded-full bg-surface-secondary"
           role="progressbar"
           aria-valuenow={currentIndex + 1}
           aria-valuemin={1}
           aria-valuemax={questions.length}
         >
           <div
-            className="h-full rounded-full bg-accent transition-all duration-200"
+            className="h-full rounded-full bg-brand transition-all duration-200"
             style={{ width: `${progressPct}%` }}
           />
         </div>
@@ -179,12 +181,12 @@ export function ClarificationQuestionsFlow({
       {/* 当前问题大卡片：key 切换触发 fade + translateY */}
       <div
         key={question.id}
-        className="animate-fade-slide-in rounded-[16px] border border-subtle bg-surface p-7 shadow-card"
+        className="animate-fade-slide-in mx-auto max-w-[720px] rounded-[16px] border border-border bg-surface p-7 sm:p-8"
       >
-        <h3 className="text-[22px] font-semibold leading-8 text-strong">
+        <h3 className="text-[22px] font-semibold leading-8 tracking-[-0.01em] text-ink sm:text-[24px] sm:leading-9">
           {question.question}
         </h3>
-        <p className="mt-2 text-sm leading-6 text-muted">
+        <p className="mt-2 text-sm leading-6 text-ink-secondary">
           {question.whyItMatters}
         </p>
 
@@ -197,7 +199,7 @@ export function ClarificationQuestionsFlow({
               }
               rows={4}
               placeholder="请用自己的话描述，几句话即可"
-              className="w-full resize-none rounded-[12px] border border-subtle bg-canvas px-4 py-3 text-[15px] leading-7 text-body outline-none transition-colors duration-150 placeholder:text-faint focus:border-accent focus:bg-surface focus:ring-2 focus:ring-accent/15"
+              className="w-full resize-none rounded-[12px] border border-border bg-paper px-4 py-3 text-[15px] leading-7 text-ink outline-none transition-colors duration-150 placeholder:text-ink-muted focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/15"
             />
           </div>
         ) : (
@@ -209,12 +211,7 @@ export function ClarificationQuestionsFlow({
             {question.options.map((option) => {
               const selected =
                 answer?.selectedValues.includes(option.value) ?? false;
-              const InputIcon =
-                question.answerType === "single_choice"
-                  ? Check
-                  : selected
-                    ? Check
-                    : null;
+              const InputIcon = selected ? Check : null;
               return (
                 <button
                   key={option.value}
@@ -229,18 +226,18 @@ export function ClarificationQuestionsFlow({
                       : toggleMulti(option.value)
                   }
                   className={[
-                    "flex items-center gap-3 rounded-[12px] border px-4 py-3.5 text-left text-[15px] leading-6 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+                    "flex items-center gap-3 rounded-[12px] border px-4 py-3.5 text-left text-[15px] leading-6 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
                     selected
-                      ? "border-accent bg-accent-soft font-medium text-accent"
-                      : "border-subtle bg-surface text-body hover:border-accent/40 hover:bg-accent-soft/40",
+                      ? "border-brand/60 bg-brand-soft font-medium text-brand"
+                      : "border-border bg-surface text-ink hover:border-brand/40 hover:bg-brand-soft/50",
                   ].join(" ")}
                 >
                   <span
                     className={[
-                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors duration-150",
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-[8px] border transition-colors duration-150",
                       selected
-                        ? "border-accent bg-accent text-white"
-                        : "border-subtle bg-surface",
+                        ? "border-brand bg-brand text-white"
+                        : "border-border-strong bg-surface",
                     ].join(" ")}
                   >
                     {InputIcon && <InputIcon size={13} />}
@@ -260,20 +257,20 @@ export function ClarificationQuestionsFlow({
                   }
                   onClick={selectSingleCustom}
                   className={[
-                    "flex items-center gap-3 rounded-[12px] border px-4 py-3.5 text-left text-[15px] leading-6 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+                    "flex items-center gap-3 rounded-[12px] border px-4 py-3.5 text-left text-[15px] leading-6 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
                     answer !== undefined && answer.selectedValues.length === 0
-                      ? "border-accent bg-accent-soft font-medium text-accent"
-                      : "border-dashed border-subtle bg-surface text-body hover:border-accent/40 hover:bg-accent-soft/40",
+                      ? "border-brand/60 bg-brand-soft font-medium text-brand"
+                      : "border-dashed border-border-strong bg-surface text-ink hover:border-brand/40 hover:bg-brand-soft/50",
                   ].join(" ")}
                 >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-subtle bg-surface text-muted">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[8px] border border-border-strong bg-surface text-ink-muted">
                     <PenLine size={12} />
                   </span>
                   自己填写
                 </button>
               ) : (
-                <div className="flex items-center gap-3 rounded-[12px] border border-dashed border-subtle bg-surface px-4 py-3">
-                  <PenLine size={15} className="shrink-0 text-muted" />
+                <div className="flex items-center gap-3 rounded-[12px] border border-dashed border-border-strong bg-surface px-4 py-3">
+                  <PenLine size={15} className="shrink-0 text-ink-muted" />
                   <input
                     type="text"
                     value={answer?.customText ?? ""}
@@ -282,7 +279,7 @@ export function ClarificationQuestionsFlow({
                     }
                     placeholder="自己补充（可选）"
                     aria-label="自己补充答案"
-                    className="w-full bg-transparent text-[15px] text-body outline-none placeholder:text-faint"
+                    className="w-full bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-muted"
                   />
                 </div>
               )
@@ -305,18 +302,18 @@ export function ClarificationQuestionsFlow({
                 autoFocus
                 placeholder="请输入你的答案"
                 aria-label="自定义答案"
-                className="w-full rounded-[12px] border border-subtle bg-canvas px-4 py-3 text-[15px] text-body outline-none transition-colors duration-150 placeholder:text-faint focus:border-accent focus:bg-surface focus:ring-2 focus:ring-accent/15"
+                className="w-full rounded-[12px] border border-border bg-paper px-4 py-3 text-[15px] text-ink outline-none transition-colors duration-150 placeholder:text-ink-muted focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/15"
               />
             </div>
           )}
 
         {/* 底部导航 */}
-        <div className="mt-7 flex items-center justify-between gap-3 border-t border-subtle pt-5">
+        <div className="mt-7 flex items-center justify-between gap-3 border-t border-border pt-5">
           <button
             type="button"
             onClick={goPrev}
             disabled={currentIndex === 0 || submitting}
-            className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-subtle bg-surface px-4 text-sm text-body transition-colors duration-150 hover:bg-muted-bg disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-10 items-center gap-1.5 rounded-[8px] border border-border bg-surface px-4 text-sm text-ink-secondary transition-colors duration-150 hover:bg-surface-secondary hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ArrowLeft size={15} />
             上一题
@@ -327,7 +324,7 @@ export function ClarificationQuestionsFlow({
               type="button"
               onClick={onSubmit}
               disabled={!answered || submitting}
-              className="inline-flex h-10 items-center gap-2 rounded-[12px] bg-accent px-5 text-sm font-medium text-white transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-brand px-5 text-sm font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               {submitting ? (
                 <>
@@ -346,7 +343,7 @@ export function ClarificationQuestionsFlow({
               type="button"
               onClick={goNext}
               disabled={!answered}
-              className="inline-flex h-10 items-center gap-1.5 rounded-[12px] bg-accent px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-10 items-center gap-1.5 rounded-[8px] bg-brand px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               下一题
               <ArrowRight size={15} />
@@ -355,7 +352,7 @@ export function ClarificationQuestionsFlow({
         </div>
 
         {submitError && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-[12px] border border-danger/30 bg-danger-soft px-4 py-3 animate-fade-in">
+          <div className="mt-4 flex animate-fade-in items-start gap-2.5 rounded-[12px] border border-danger/30 bg-danger-soft px-4 py-3">
             <RefreshCw size={15} className="mt-0.5 shrink-0 text-danger" />
             <p className="text-sm leading-6 text-danger">{submitError}</p>
           </div>

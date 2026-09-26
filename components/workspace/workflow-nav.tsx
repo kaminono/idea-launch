@@ -1,14 +1,13 @@
 "use client";
 
-import { Check } from "lucide-react";
 import type { WorkflowStage } from "@/lib/types";
 
 const STAGES = [
-  { key: "idea_understanding", label: "产品想法" },
-  { key: "clarification", label: "信息补全" },
-  { key: "product_analysis", label: "产品分析" },
-  { key: "mvp_scoping", label: "MVP" },
-  { key: "execution_planning", label: "执行方案" },
+  { key: "idea_understanding", label: "产品想法", en: "Idea" },
+  { key: "clarification", label: "信息补全", en: "Clarify" },
+  { key: "product_analysis", label: "产品分析", en: "Analysis" },
+  { key: "mvp_scoping", label: "MVP 收敛", en: "Scope" },
+  { key: "execution_planning", label: "执行方案", en: "Execute" },
 ] as const;
 
 interface WorkflowNavProps {
@@ -22,44 +21,79 @@ export function WorkflowNav({ currentStage }: WorkflowNavProps) {
   );
 
   return (
-    <nav aria-label="工作流阶段" className="space-y-1">
-      {STAGES.map((stage, index) => {
-        const isDone = index < currentIndex;
-        const isCurrent = index === currentIndex;
-        const isLocked = index > currentIndex;
+    <nav aria-label="立项流程" className="px-1">
+      <ol className="flex flex-row items-center justify-between gap-1 lg:flex-col lg:items-stretch lg:gap-0">
+        {STAGES.map((stage, index) => {
+          const isDone = index < currentIndex;
+          const isCurrent = index === currentIndex;
+          const isLocked = index > currentIndex;
+          const isLast = index === STAGES.length - 1;
 
-        return (
-          <div
-            key={stage.key}
-            aria-current={isCurrent ? "step" : undefined}
-            className={[
-              "flex items-center gap-3 rounded-[8px] px-3 py-2.5 text-sm",
-              isCurrent
-                ? "bg-accent-soft font-medium text-accent"
-                : isDone
-                  ? "text-body"
-                  : "text-faint",
-            ].join(" ")}
-          >
-            <span
-              className={[
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px]",
-                isDone
-                  ? "border-success bg-success text-white"
-                  : isCurrent
-                    ? "border-accent text-accent"
-                    : "border-subtle text-faint",
-              ].join(" ")}
+          return (
+            <li
+              key={stage.key}
+              aria-current={isCurrent ? "step" : undefined}
+              className="relative flex flex-1 gap-3 pb-0 lg:pb-6 lg:last:pb-0"
             >
-              {isDone ? <Check size={12} /> : index + 1}
-            </span>
-            <span>{stage.label}</span>
-            {isLocked && (
-              <span className="ml-auto text-[11px] text-faint">待开放</span>
-            )}
-          </div>
-        );
-      })}
+              {/* 节点与连接线 */}
+              <div className="relative flex w-4 items-center justify-center lg:flex-col lg:items-center">
+                <span
+                  className={[
+                    "z-10 mt-[5px] h-2 w-2 shrink-0 rounded-full border transition-colors duration-200",
+                    isCurrent
+                      ? "h-2.5 w-2.5 border-brand bg-brand"
+                      : isDone
+                        ? "border-brand/50 bg-brand/50"
+                        : "border-border-strong bg-paper",
+                  ].join(" ")}
+                />
+                {!isLast && (
+                  <span
+                    className={[
+                      "absolute left-[13px] right-0 top-[12px] h-px lg:top-[13px] lg:h-auto lg:w-px lg:flex-1",
+                      isDone ? "bg-brand/40" : "bg-border",
+                    ].join(" ")}
+                  />
+                )}
+              </div>
+
+              <div className="-mt-0.5 hidden flex-1 flex-col lg:flex">
+                <span className="font-mono text-[10px] leading-4 text-ink-muted">
+                  {String(index + 1).padStart(2, "0")} · {stage.en}
+                </span>
+                <span
+                  className={[
+                    "text-[13px] leading-5 transition-colors duration-200",
+                    isCurrent
+                      ? "font-semibold text-ink"
+                      : isDone
+                        ? "text-ink-secondary"
+                        : isLocked
+                          ? "text-ink-muted"
+                          : "text-ink-secondary",
+                  ].join(" ")}
+                >
+                  {stage.label}
+                </span>
+              </div>
+
+              {/* 窄屏：仅中文标签，圆点下方 */}
+              <span
+                className={[
+                  "absolute left-1/2 top-[22px] -translate-x-1/2 whitespace-nowrap text-[11px] leading-4 lg:hidden",
+                  isCurrent
+                    ? "font-semibold text-ink"
+                    : isDone
+                      ? "text-ink-secondary"
+                      : "text-ink-muted",
+                ].join(" ")}
+              >
+                {stage.label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </nav>
   );
 }

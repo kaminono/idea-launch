@@ -2,16 +2,23 @@
 // 兼容接口（POST {baseUrl}/responses）调用豆包模型。
 // 仅在 Route Handler（服务端）中被引用，API Key 不做任何持久化。
 
-import { REQUEST_TIMEOUT_MS } from "./config";
+import {
+  EXECUTION_PLANNING_TIMEOUT_MS,
+  REQUEST_TIMEOUT_MS,
+} from "./config";
 import { AiError, normalizeHttpError } from "./errors";
 import {
   CLARIFIED_CONTEXT_JSON_SCHEMA,
   CLARIFICATION_QUESTIONS_JSON_SCHEMA,
+  EXECUTION_PLANNING_JSON_SCHEMA,
+  FINAL_REVIEW_JSON_SCHEMA,
   IDEA_UNDERSTANDING_JSON_SCHEMA,
   MVP_SCOPING_JSON_SCHEMA,
   PRODUCT_ANALYSIS_JSON_SCHEMA,
   isClarificationQuestions,
   isClarifiedContext,
+  isExecutionPlanningResult,
+  isFinalReviewResult,
   isIdeaUnderstanding,
   isMvpScopingResult,
   isProductAnalysisResult,
@@ -19,11 +26,15 @@ import {
 import {
   CLARIFICATION_QUESTIONS_SYSTEM_PROMPT,
   CLARIFICATION_SYNTHESIS_SYSTEM_PROMPT,
+  EXECUTION_PLANNING_SYSTEM_PROMPT,
+  FINAL_REVIEW_SYSTEM_PROMPT,
   IDEA_UNDERSTANDING_SYSTEM_PROMPT,
   MVP_SCOPING_SYSTEM_PROMPT,
   PRODUCT_ANALYSIS_SYSTEM_PROMPT,
   buildClarificationQuestionsPrompt,
   buildClarificationSynthesisPrompt,
+  buildExecutionPlanningPrompt,
+  buildFinalReviewPrompt,
   buildIdeaUnderstandingUserPrompt,
   buildMvpScopingPrompt,
   buildProductAnalysisPrompt,
@@ -34,6 +45,8 @@ import type {
   ClarificationQuestion,
   ClarificationState,
   ClarifiedContext,
+  ExecutionPlanningResult,
+  FinalReviewResult,
   IdeaUnderstanding,
   MvpScopingResult,
   ProductAnalysisResult,
@@ -354,6 +367,205 @@ export async function scopeMvp(
   return { result, latencyMs: Date.now() - start };
 }
 
+/** Execution Planning 节点 */
+export async function planExecution(
+  params: CallParams & {
+    rawIdea: string;
+    ideaUnderstanding: IdeaUnderstanding;
+    clarification: ClarificationState;
+    productAnalysis: ProductAnalysisResult;
+    mvpScoping: MvpScopingResult;
+  }
+): Promise<{ result: ExecutionPlanningResult; latencyMs: number }> {
+  const start = Date.now();
+  const text = await callResponses({
+    apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
+    model: params.model,
+    systemPrompt: EXECUTION_PLANNING_SYSTEM_PROMPT,
+    userPrompt: buildExecutionPlanningPrompt({
+      rawIdea: params.rawIdea,
+      ideaUnderstanding: params.ideaUnderstanding,
+      clarification: params.clarification,
+      productAnalysis: params.productAnalysis,
+      mvpScoping: params.mvpScoping,
+    }),
+    formatName: "execution_planning",
+    formatDescription:
+      "执行方案规划结构化结果：执行定义、产品结构、轻量技术方案、核心数据对象、里程碑、可执行任务、验证节点、执行风险与收尾总结。",
+    jsonSchema: EXECUTION_PLANNING_JSON_SCHEMA,
+    timeoutMs: EXECUTION_PLANNING_TIMEOUT_MS,
+  });
+  const parsed = parseJson(text);
+  if (!isExecutionPlanningResult(parsed)) {
+    throw new AiError("AI_INVALID_RESPONSE");
+  }
+  const result: ExecutionPlanningResult = {
+    executionDefinition: {
+      goal: parsed.executionDefinition.goal.trim(),
+      deliveryTarget: parsed.executionDefinition.deliveryTarget.trim(),
+      primaryUser: parsed.executionDefinition.primaryUser.trim(),
+      coreScenario: parsed.executionDefinition.coreScenario.trim(),
+    },
+    productStructure: {
+      surfaces: parsed.productStructure.surfaces.map((item) => ({
+        name: item.name.trim(),
+        purpose: item.purpose.trim(),
+        keyActions: cleanArray(item.keyActions),
+      })),
+      userFlow: cleanArray(parsed.productStructure.userFlow),
+    },
+    technicalPlan: {
+      architecture: parsed.technicalPlan.architecture.trim(),
+      frontend: {
+        approach: parsed.technicalPlan.frontend.approach.trim(),
+        responsibilities: cleanArray(
+          parsed.technicalPlan.frontend.responsibilities
+        ),
+      },
+      backend: {
+        approach: parsed.technicalPlan.backend.approach.trim(),
+        responsibilities: cleanArray(
+          parsed.technicalPlan.backend.responsibilities
+        ),
+      },
+      ai: {
+        needed: parsed.technicalPlan.ai.needed,
+        role: parsed.technicalPlan.ai.role.trim(),
+        integration: parsed.technicalPlan.ai.integration.trim(),
+      },
+      storage: {
+        approach: parsed.technicalPlan.storage.approach.trim(),
+        reason: parsed.technicalPlan.storage.reason.trim(),
+      },
+      externalServices: parsed.technicalPlan.externalServices.map((item) => ({
+        name: item.name.trim(),
+        purpose: item.purpose.trim(),
+        required: item.required,
+      })),
+    },
+    dataModel: parsed.dataModel.map((item) => ({
+      name: item.name.trim(),
+      purpose: item.purpose.trim(),
+      keyFields: cleanArray(item.keyFields),
+    })),
+    milestones: parsed.milestones.map((item) => ({
+      id: item.id.trim(),
+      name: item.name.trim(),
+      goal: item.goal.trim(),
+      deliverables: cleanArray(item.deliverables),
+      acceptance: cleanArray(item.acceptance),
+    })),
+    tasks: parsed.tasks.map((item) => ({
+      id: item.id.trim(),
+      milestoneId: item.milestoneId.trim(),
+      title: item.title.trim(),
+      objective: item.objective.trim(),
+      type: item.type,
+      dependencies: cleanArray(item.dependencies),
+      acceptance: cleanArray(item.acceptance),
+      effort: item.effort,
+    })),
+    validationCheckpoints: parsed.validationCheckpoints.map((item) => ({
+      afterMilestone: item.afterMilestone.trim(),
+      whatToValidate: item.whatToValidate.trim(),
+      signal: item.signal.trim(),
+    })),
+    executionRisks: parsed.executionRisks.map((item) => ({
+      risk: item.risk.trim(),
+      impact: item.impact,
+      response: item.response.trim(),
+    })),
+    executionSummary: {
+      firstActions: cleanArray(parsed.executionSummary.firstActions),
+      definitionOfDone: cleanArray(parsed.executionSummary.definitionOfDone),
+      readyForFinalReview:
+        parsed.executionSummary.readyForFinalReview,
+    },
+  };
+  return { result, latencyMs: Date.now() - start };
+}
+
+/** Final Review 节点（只读一致性审计，使用默认超时） */
+export async function reviewFinal(
+  params: CallParams & {
+    rawIdea: string;
+    ideaUnderstanding: IdeaUnderstanding;
+    clarification: ClarificationState;
+    productAnalysis: ProductAnalysisResult;
+    mvpScoping: MvpScopingResult;
+    executionPlanning: ExecutionPlanningResult;
+  }
+): Promise<{ result: FinalReviewResult; latencyMs: number }> {
+  const start = Date.now();
+  const text = await callResponses({
+    apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
+    model: params.model,
+    systemPrompt: FINAL_REVIEW_SYSTEM_PROMPT,
+    userPrompt: buildFinalReviewPrompt({
+      rawIdea: params.rawIdea,
+      ideaUnderstanding: params.ideaUnderstanding,
+      clarification: params.clarification,
+      productAnalysis: params.productAnalysis,
+      mvpScoping: params.mvpScoping,
+      executionPlanning: params.executionPlanning,
+    }),
+    formatName: "final_review",
+    formatDescription:
+      "最终一致性审查结果：总体结论、链路一致性检查、范围完整性、事实完整性、执行准备度、有限调整建议与最终行动总结。",
+    jsonSchema: FINAL_REVIEW_JSON_SCHEMA,
+  });
+  const parsed = parseJson(text);
+  if (!isFinalReviewResult(parsed)) {
+    throw new AiError("AI_INVALID_RESPONSE");
+  }
+  const result: FinalReviewResult = {
+    verdict: {
+      status: parsed.verdict.status,
+      summary: parsed.verdict.summary.trim(),
+    },
+    consistencyChecks: parsed.consistencyChecks
+      .map((item) => ({
+        dimension: item.dimension.trim(),
+        status: item.status,
+        finding: item.finding.trim(),
+      }))
+      .filter((item) => item.dimension && item.finding)
+      .slice(0, 7),
+    scopeIntegrity: {
+      passed: parsed.scopeIntegrity.passed,
+      reintroducedItems: cleanArray(parsed.scopeIntegrity.reintroducedItems),
+      finding: parsed.scopeIntegrity.finding.trim(),
+    },
+    factIntegrity: {
+      passed: parsed.factIntegrity.passed,
+      issues: cleanArray(parsed.factIntegrity.issues),
+      finding: parsed.factIntegrity.finding.trim(),
+    },
+    executionReadiness: {
+      passed: parsed.executionReadiness.passed,
+      strengths: cleanArray(parsed.executionReadiness.strengths),
+      gaps: cleanArray(parsed.executionReadiness.gaps),
+    },
+    recommendedAdjustments: parsed.recommendedAdjustments
+      .map((item) => ({
+        priority: item.priority,
+        targetStage: item.targetStage,
+        adjustment: item.adjustment.trim(),
+        reason: item.reason.trim(),
+      }))
+      .filter((item) => item.adjustment && item.reason)
+      .slice(0, 5),
+    finalSummary: {
+      readyToBuild: parsed.finalSummary.readyToBuild,
+      firstAction: parsed.finalSummary.firstAction.trim(),
+      keepInMind: cleanArray(parsed.finalSummary.keepInMind).slice(0, 4),
+    },
+  };
+  return { result, latencyMs: Date.now() - start };
+}
+
 async function callResponses(args: {
   apiKey: string;
   baseUrl: string;
@@ -363,13 +575,15 @@ async function callResponses(args: {
   formatName: string;
   formatDescription: string;
   jsonSchema: Record<string, unknown>;
+  /** 可选节点级超时覆盖；不传时使用 REQUEST_TIMEOUT_MS */
+  timeoutMs?: number;
 }): Promise<string> {
   const endpoint = joinUrl(args.baseUrl, "/responses");
 
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(),
-    REQUEST_TIMEOUT_MS
+    args.timeoutMs ?? REQUEST_TIMEOUT_MS
   );
 
   let response: Response;

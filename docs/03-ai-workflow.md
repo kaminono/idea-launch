@@ -1,6 +1,6 @@
 # 03 · AI Workflow
 
-> 定义 idea-launch 的 AI 工作流契约。**当前实现节点 1 Idea Understanding、节点 2 Clarification（拆为 Question Generation / Synthesis 两个模型动作）、节点 3 Product Analysis 与节点 4 MVP Scoping。**
+> 定义 idea-launch 的 AI 工作流契约。**V1 六个节点已全部实现：节点 1 Idea Understanding、节点 2 Clarification（拆为 Question Generation / Synthesis 两个模型动作）、节点 3 Product Analysis、节点 4 MVP Scoping、节点 5 Execution Planning、节点 6 Final Review（最终一致性审计）。V1 Complete。**
 
 ## 1. 设计原则
 
@@ -11,16 +11,16 @@
 5. **不展示思维链**：前端只展示产品级运行状态，不展示模型私有 Chain of Thought。
 6. **可重复、可恢复**：节点产物写入本地 Project，刷新后可恢复；失败可重试。
 
-## 2. 完整节点定义（规划）
+## 2. 完整节点定义（V1 已全部实现）
 
 | # | 节点 | 英文标识 | 主要输入 | 结构化输出 |
 |---|---|---|---|---|
 | 1 | 产品想法理解 | `idea_understanding` | `rawIdea`（原始想法文本） | IdeaUnderstanding |
 | 2 | 信息补全 | `clarification` | IdeaUnderstanding + 用户回答（拆为 Question Generation / Synthesis 两个模型动作） | ClarificationQuestions → ClarifiedContext |
-| 3 | 产品分析 | `product_analysis` | `rawIdea` + IdeaUnderstanding + ClarificationState（Clarified Context 为主要输入） | ProductAnalysisResult（已实现，手动触发） |
-| 4 | MVP 范围收敛 | `mvp_scoping` | Product Analysis（主要输入）+ Clarified Context + Idea Understanding + rawIdea | MvpScopingResult（已实现，手动触发） |
-| 5 | 执行方案规划 | `execution_planning` | 节点 1–4 产物 | 技术路径 + 任务拆解 |
-| 6 | 最终复核 | `final_review` | 全部上游产物 | 最终立项方案 |
+| 3 | 产品分析 | `product_analysis` | `rawIdea` + IdeaUnderstanding + ClarificationState（Clarified Context 为主要输入） | ProductAnalysisResult（手动触发） |
+| 4 | MVP 范围收敛 | `mvp_scoping` | Product Analysis（主要输入）+ Clarified Context + Idea Understanding + rawIdea | MvpScopingResult（手动触发） |
+| 5 | 执行方案规划 | `execution_planning` | MVP Scoping（最高优先级）+ Product Analysis + Clarified Context + rawIdea | ExecutionPlanningResult（手动触发） |
+| 6 | 最终一致性审查 | `final_review` | 全部上游产物（rawIdea / IdeaUnderstanding / ClarifiedContext / ProductAnalysis / MvpScoping / ExecutionPlanning） | FinalReviewResult（手动触发，只读审计） |
 
 节点按顺序解锁；左侧导航允许回看已完成节点。
 
@@ -319,14 +319,188 @@ Clarification 拆为两个独立模型动作，禁止合并为一次调用。
 - 运行时清洗：字符串字段 trim、空项丢弃、枚举值原样保留；守卫 `isMvpScopingResult` 校验失败抛出 `AI_INVALID_RESPONSE`
 - 失败时只写 `lastRun`（stage `mvp_scoping`、failed），不动前三阶段产物，可手动重试
 
-## 7. 后续节点边界（仅预留，不实现）
+## 7. 节点 5：Execution Planning（已实现）
 
-### 7.1 Execution Planning
+### 7.1 目标与触发
 
-- 输出：`{ techStackRecommendation: [], risks: [], milestones: [], tasks: [{id, title, description, phase}] }`
+- 目标：把已经冻结的 MVP 范围翻译成独立开发者可以直接开工的开发计划——执行目标、产品结构（界面与用户路径）、轻量技术路径、核心数据对象、里程碑、可执行任务、验证节点、执行风险、立即行动项与完成定义
+- 触发：**仅由用户在 MVP Scoping 结果页手动点击「生成执行方案」启动**，不挂任何自动 effect；完成后刷新直接显示结果、绝不重新调用模型
+- 本节点不重新做产品分析、不重新提问、不改动 MVP 范围决策、不产出最终立项方案 / 商业计划 / 真实代码
 
-### 7.2 Final Review
+### 7.2 输入
 
-- 输出：汇总全部工件的立项方案（支持 Markdown 导出，后续实现）
+```ts
+{
+  rawIdea: string;
+  ideaUnderstanding: IdeaUnderstanding;
+  clarification: ClarificationState;   // 必须含 clarifiedContext
+  productAnalysis: ProductAnalysisResult;
+  mvpScoping: MvpScopingResult;        // 最高优先级输入，范围已冻结
+}
+```
 
-> 后续节点新增字段时，必须同步更新 `docs/04-data-schema.md` 与 `lib/types/`，并保证旧版本地数据可被安全读取或重置。
+- 输入优先级：MVP Scoping → Product Analysis → Clarified Context → rawIdea
+- Prompt 显式传入 MVP Scoping 的 `mustHave` / `shouldDefer` / `explicitlyOutOfScope` 三段
+- Route Handler 强制校验 `clarification.clarifiedContext`、`productAnalysis`、`mvpScoping` 非空，缺失时返回 `AI_BAD_REQUEST`
+
+### 7.3 范围冻结（Prompt 最高优先级）
+
+- `shouldDefer` 与 `explicitlyOutOfScope` 已排除的能力严禁回流到 surfaces / technicalPlan / dataModel / milestones / tasks；明确点名禁止登录注册、云数据库、云同步、支付、权限体系、社区、多端、企业后台、推荐流、音视频
+- 仅当某项能力是实现已冻结 MVP 的必要基础设施时允许出现，且必须表述为「实现基础」而非新增功能
+- 沿用独立开发者约束：一人开发、轻量技术栈、本地优先、尽快真实验证、避免过度工程化
+- 模型推荐的技术 / 范围决策必须与用户已确认约束（Confirmed Constraints）区分表达，不得伪装成用户事实
+
+### 7.4 结构化输出 Schema
+
+```json
+{
+  "executionDefinition": {
+    "goal": "string —— 本轮开发要达成的目标",
+    "deliveryTarget": "string —— 第一版实际交付物",
+    "primaryUser": "string",
+    "coreScenario": "string"
+  },
+  "productStructure": {
+    "surfaces": [
+      { "name": "string", "purpose": "string", "keyActions": ["string"] }
+    ],
+    "userFlow": ["string —— 3～8 步，用户视角最小完整路径"]
+  },
+  "technicalPlan": {
+    "architecture": "string —— 总体架构一句话 + 轻量说明",
+    "frontend": { "approach": "string", "responsibilities": ["string"] },
+    "backend": { "approach": "string", "responsibilities": ["string"] },
+    "ai": {
+      "needed": true,
+      "role": "string —— AI 在产品中的角色",
+      "integration": "string —— 接入方式；needed=false 时说明本阶段不需要"
+    },
+    "storage": { "approach": "string", "reason": "string" },
+    "externalServices": [
+      { "name": "string", "purpose": "string", "required": true }
+    ]
+  },
+  "dataModel": [
+    { "name": "string", "purpose": "string", "keyFields": ["string"] }
+  ],
+  "milestones": [
+    {
+      "id": "string —— 如 M1",
+      "name": "string",
+      "goal": "string",
+      "deliverables": ["string"],
+      "acceptance": ["string"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "string —— 如 T01",
+      "milestoneId": "string —— 必须引用本次输出存在的里程碑",
+      "title": "string",
+      "objective": "string",
+      "type": "product | frontend | backend | ai | data | integration | test | release",
+      "dependencies": ["string —— 仅引用本次输出存在的任务 ID"],
+      "acceptance": ["string —— 可人工判断的完成条件"],
+      "effort": "S | M | L"
+    }
+  ],
+  "validationCheckpoints": [
+    { "afterMilestone": "string", "whatToValidate": "string", "signal": "string" }
+  ],
+  "executionRisks": [
+    { "risk": "string", "impact": "high | medium | low", "response": "string" }
+  ],
+  "executionSummary": {
+    "firstActions": ["string —— 3～5 项有序、立即可开始"],
+    "definitionOfDone": ["string —— 3～6 项，第一版做到这里就停"],
+    "readyForFinalReview": true
+  }
+}
+```
+
+数量边界：`milestones` 3～6、`tasks` 8～18、`userFlow` 3～8、`dataModel` 2～6、`validationCheckpoints` 2～4、`executionRisks` 2～4、`firstActions` 3～5、`definitionOfDone` 3～6。
+
+### 7.5 调用与校验
+
+- 端点：`POST /api/ai/plan/execution`
+- 继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；复用现有 AI Client（`planExecution()`），不新建第二套客户端、不切换模型
+- **节点级超时 180000ms（`EXECUTION_PLANNING_TIMEOUT_MS`）**：真实验证该节点耗时约 93～126s，统一默认 120s 边界过近；仅本节点放宽到 180s，其他节点（含 Final Review）继续使用默认 `REQUEST_TIMEOUT_MS` 120000ms。超时由 AI Client 的动作级 `timeoutMs` 覆盖实现，不做全局放宽，不引入异步队列 / 后台任务 / streaming
+- 运行时清洗：字符串字段 trim、空项丢弃、枚举值（type / effort / impact）与布尔值（needed / required / readyForFinalReview）原样保留；守卫 `isExecutionPlanningResult` 校验失败抛出 `AI_INVALID_RESPONSE`
+- 成功后写入 Project 可选字段 `executionPlanning: { result, completedAt }`，`status` 保持 `"scoped"`（不新增 ProjectStatus），并写 `lastRun`（stage `execution_planning`、succeeded、记录 durationMs）
+- 失败时只写 `lastRun`（stage `execution_planning`、failed），不动前四阶段产物与已有 `executionPlanning`，可手动重试
+
+## 8. 节点 6：Final Review（已实现）
+
+### 8.1 定位：一致性审计，不是重新生成
+
+- Final Review 是整条立项链路的 **Consistency Audit（一致性审计）**，不是 Regeneration（重新生成）
+- 只检查各阶段之间的关系：想法有没有无依据漂移、用户确认信息有没有被改变、Product Analysis 是否与 Clarified Context 一致、MVP 是否围绕 Product Analysis、Execution Planning 是否遵守 MVP、defer/out-of-scope 能力有没有回流、假设有没有被写成事实、技术是否过度工程化、任务是否具体可开工
+- **只读审计**：禁止自动修改 Product Analysis / MVP / Execution Plan 等任何前序结果，不背后改数据
+- 不重新输出输入中的已有内容；方案一致就明确判 `ready` 并告知可以开工，不为显示工作量强行制造问题；`needs_attention` 只用于真正影响执行的问题
+
+### 8.2 输入与触发
+
+- 触发：**仅由用户在 Execution Planning 结果页手动点击「检查完整立项方案」启动**，不挂任何自动 effect；完成后刷新直接显示结果、绝不重新调用模型
+- 输入：`rawIdea`、`ideaUnderstanding`、`clarification`（含 `clarifiedContext`）、`productAnalysis`、`mvpScoping`、`executionPlanning`
+- 缺少 Execution Planning（或 Clarified Context）时返回可读中文错误
+- 端点：`POST /api/ai/review/final`；继续使用 `doubao-seed-2.1-pro`、Responses API `json_schema`（strict），`thinking: { type: "disabled" }`、`store: false`；超时使用默认 120s，不复用 Execution Planning 的 180s
+
+### 8.3 否定语境区分（Prompt 强制约束）
+
+- 当「登录 / 注册 / 支付 / 云数据库 / 社区 / 多端」等词出现在「不接入 / 不建设 / 不需要 / 明确排除」等否定语境时，属于正常边界声明，**绝不能误判为回流**
+- 只有当某项已排除能力被当作要实现的功能、任务或交付物时，才算范围回流
+
+### 8.4 结构化输出 Schema（七段）
+
+```json
+{
+  "verdict": {
+    "status": "ready | needs_attention",
+    "summary": "string —— 一句话整体结论，不输出分数 / 等级"
+  },
+  "consistencyChecks": [
+    {
+      "dimension": "string",
+      "status": "pass | warning",
+      "finding": "string —— 简洁说明依据，不引用大段原文"
+    }
+  ],
+  "scopeIntegrity": {
+    "passed": "boolean",
+    "reintroducedItems": ["string —— 回流项；无回流给空数组 []"],
+    "finding": "string"
+  },
+  "factIntegrity": {
+    "passed": "boolean",
+    "issues": ["string —— 假设写成事实等问题；无问题给空数组 []"],
+    "finding": "string"
+  },
+  "executionReadiness": {
+    "passed": "boolean",
+    "strengths": ["string"],
+    "gaps": ["string —— 无缺口给空数组"]
+  },
+  "recommendedAdjustments": [
+    {
+      "priority": "high | medium | low",
+      "targetStage": "clarification | product_analysis | mvp | execution",
+      "adjustment": "string —— 可执行的有限修正",
+      "reason": "string"
+    }
+  ],
+  "finalSummary": {
+    "readyToBuild": "boolean",
+    "firstAction": "string —— 必须从 executionSummary.firstActions 中挑选，不发明新任务",
+    "keepInMind": ["string —— 2～4 条真正重要的提醒"]
+  }
+}
+```
+
+数量边界：`consistencyChecks` 5～7、`recommendedAdjustments` 0～5（没有必要修改时为 `[]`）、`keepInMind` 2～4。
+
+### 8.5 调用、校验与恢复
+
+- AI Client `reviewFinal()` 复用现有客户端，不新建第二套；运行时做 trim、空项丢弃、枚举校验与数量截断；守卫 `isFinalReviewResult` 校验失败抛出 `AI_INVALID_RESPONSE`
+- 成功后写入 Project 可选字段 `finalReview: { result, completedAt }`，`status` 保持 `"scoped"`（不新增 ProjectStatus），并写 `lastRun`（stage `final_review`、succeeded、记录 durationMs）
+- 失败时只写 `lastRun`（stage `final_review`、failed），**保留全部前序结果（含 Execution Planning）**，可手动重试；刷新后失败态不自动重试
+- 导航不新增第六步：Final Review 仍归属左侧第五阶段视图，运行态只在主区域展示审计动作，不展示思维链

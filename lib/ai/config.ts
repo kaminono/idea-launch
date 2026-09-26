@@ -30,5 +30,12 @@ export function getModelOption(model: string): ModelOption {
   );
 }
 
-/** 请求超时（毫秒）：Product Analysis 等大 Schema 节点生成时间更长 */
+/** 默认请求超时（毫秒） */
 export const REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * Execution Planning 节点专用超时（毫秒）。
+ * 真实验证该节点耗时约 93～118s，统一 120s 边界过近，
+ * 仅对该节点放宽到 180s；其他节点继续使用默认值。
+ */
+export const EXECUTION_PLANNING_TIMEOUT_MS = 180_000;

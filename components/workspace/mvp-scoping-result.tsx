@@ -9,10 +9,9 @@ import {
   Clock,
   CornerDownRight,
   Layers,
-  Lock,
+  Loader2,
   MinusCircle,
   ShieldAlert,
-  Sparkle,
   Target,
 } from "lucide-react";
 import type { MvpRiskImpact, MvpScopingResult } from "@/lib/types";
@@ -20,6 +19,8 @@ import type { MvpRiskImpact, MvpScopingResult } from "@/lib/types";
 interface MvpScopingResultViewProps {
   result: MvpScopingResult;
   latencyMs: number | null;
+  onStartExecution: () => void;
+  executionStarting: boolean;
 }
 
 const IMPACT_LABEL: Record<MvpRiskImpact, string> = {
@@ -31,91 +32,95 @@ const IMPACT_LABEL: Record<MvpRiskImpact, string> = {
 export function MvpScopingResultView({
   result,
   latencyMs,
+  onStartExecution,
+  executionStarting,
 }: MvpScopingResultViewProps) {
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3 rounded-[16px] border border-success/25 bg-success-soft px-5 py-4 animate-fade-in">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success text-white">
+      <div className="flex items-start gap-3 rounded-[16px] border border-aubergine/25 bg-aubergine-soft px-5 py-4 animate-fade-in">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-aubergine text-white">
           <Check size={18} />
         </span>
         <div>
-          <p className="text-[15px] font-semibold text-success">
+          <p className="text-[15px] font-semibold text-aubergine">
             MVP 范围已经收敛
           </p>
-          <p className="mt-0.5 text-sm leading-6 text-body">
+          <p className="mt-0.5 text-sm leading-6 text-ink-secondary">
             第一版只保留验证关键假设所需的最小完整闭环，其余能力已明确暂缓或不做。
           </p>
         </div>
       </div>
 
       {/* MVP 定义 */}
-      <section className="rounded-[16px] border border-subtle bg-surface p-6">
-        <h3 className="flex items-center gap-2 text-base font-semibold text-strong">
-          <Sparkle size={17} className="text-accent" />
-          MVP 定义
-        </h3>
-        <p className="mt-3 text-[15px] font-medium leading-7 text-strong">
-          {result.mvpDefinition.goal}
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <section className="rounded-[16px] border border-border bg-surface p-6">
+        <p className="label-editorial">MVP Definition · MVP 定义</p>
+        <div className="mt-3 flex items-start gap-2.5">
+          <Layers size={17} className="mt-1 shrink-0 text-brand" />
+          <p className="text-[15px] font-medium leading-7 text-ink">
+            {result.mvpDefinition.goal}
+          </p>
+        </div>
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <DefinitionItem label="第一优先用户" value={result.mvpDefinition.primaryUser} />
           <DefinitionItem label="核心场景" value={result.mvpDefinition.coreScenario} />
           <DefinitionItem label="核心价值" value={result.mvpDefinition.coreValue} />
         </div>
       </section>
 
-      {/* 这一版首先验证什么 */}
-      <section className="rounded-[16px] border border-accent/25 bg-accent-soft/50 p-6">
-        <h3 className="flex items-center gap-2 text-base font-semibold text-strong">
-          <Target size={17} className="text-accent" />
-          这一版首先验证什么
-        </h3>
-        <p className="mt-3 text-[15px] font-medium leading-7 text-strong">
-          {result.validationTarget.primaryHypothesis}
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* THIS MVP VALIDATES */}
+      <section className="rounded-[16px] border border-brand/25 bg-brand-soft/50 p-6">
+        <p className="label-editorial text-brand">This MVP Validates · 首要验证假设</p>
+        <div className="mt-3 flex items-start gap-2.5">
+          <Target size={17} className="mt-1 shrink-0 text-brand" />
+          <p className="text-[17px] font-semibold leading-8 tracking-[-0.01em] text-ink">
+            {result.validationTarget.primaryHypothesis}
+          </p>
+        </div>
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div>
-            <p className="text-xs font-medium text-muted">为什么优先验证它</p>
-            <p className="mt-1.5 text-sm leading-6 text-body">
+            <p className="text-xs font-medium text-ink-muted">为什么优先验证它</p>
+            <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
               {result.validationTarget.whyThisFirst}
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium text-muted">怎么判断结果</p>
-            <p className="mt-1.5 text-sm leading-6 text-body">
+            <p className="text-xs font-medium text-ink-muted">怎么判断结果</p>
+            <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
               {result.validationTarget.successSignal}
             </p>
           </div>
         </div>
       </section>
 
-      {/* 第一版必须做 vs 现在先不做：核心视觉对比 */}
+      {/* BUILD NOW vs NOT NOW：核心视觉对比 */}
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Build Now */}
-        <div className="rounded-[16px] border border-accent/25 bg-accent-soft/30 p-6">
-          <h3 className="flex items-center gap-2 text-base font-semibold text-strong">
-            <CheckCircle2 size={17} className="text-accent" />
-            第一版必须做
-          </h3>
-          <div className="mt-4 space-y-3">
-            {result.mustHave.map((item) => (
+        <div className="rounded-[16px] border border-brand/25 bg-brand-soft/40 p-6">
+          <p className="label-editorial text-brand">Build Now · 第一版必须做</p>
+          <div className="mt-4 space-y-3 reveal-group">
+            {result.mustHave.map((item, index) => (
               <div
                 key={item.name}
-                className="rounded-[12px] border border-accent/20 bg-surface p-4"
+                className="reveal-item flex gap-4 rounded-[12px] border border-brand/20 bg-surface p-4"
               >
-                <p className="text-sm font-semibold text-accent">{item.name}</p>
-                <p className="mt-1.5 text-sm leading-6 text-body">
-                  <span className="text-muted">用户需要：</span>
-                  {item.userNeed}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-body">
-                  <span className="text-muted">为什么必须：</span>
-                  {item.reason}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-body">
-                  <span className="text-muted">完成标准：</span>
-                  {item.acceptance}
-                </p>
+                <span className="font-mono text-[22px] font-semibold leading-none text-brand">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-brand">{item.name}</p>
+                  <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
+                    <span className="text-ink-muted">用户需要：</span>
+                    {item.userNeed}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-ink-secondary">
+                    <span className="text-ink-muted">为什么必须：</span>
+                    {item.reason}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-ink-secondary">
+                    <span className="text-ink-muted">完成标准：</span>
+                    {item.acceptance}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
@@ -123,25 +128,25 @@ export function MvpScopingResultView({
 
         {/* Not Now */}
         <div className="space-y-4">
-          <div className="rounded-[16px] border border-violet-accent/25 bg-violet-accent/[0.05] p-6">
-            <h3 className="flex items-center gap-2 text-base font-semibold text-strong">
-              <Clock size={17} className="text-violet-accent" />
-              现在先不做 · 以后再考虑
-            </h3>
-            <div className="mt-4 space-y-3">
+          <div className="rounded-[16px] border border-border bg-surface-secondary/50 p-6">
+            <p className="label-editorial">Not Now · 现在先不做，以后再考虑</p>
+            <div className="mt-4 space-y-3 reveal-group">
               {result.shouldDefer.map((item) => (
                 <div
                   key={item.name}
-                  className="rounded-[12px] border border-subtle bg-surface p-4"
+                  className="reveal-item rounded-[12px] border border-border bg-surface p-4"
                 >
-                  <p className="text-sm font-medium text-strong">{item.name}</p>
-                  <p className="mt-1.5 text-sm leading-6 text-body">
+                  <p className="flex items-center gap-2 text-sm font-medium text-ink">
+                    <Clock size={14} className="shrink-0 text-ink-muted" />
+                    {item.name}
+                  </p>
+                  <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
                     {item.reason}
                   </p>
-                  <p className="mt-1.5 flex gap-1.5 text-sm leading-6 text-body">
-                    <CornerDownRight size={14} className="mt-1 shrink-0 text-violet-accent" />
+                  <p className="mt-1.5 flex gap-1.5 text-sm leading-6 text-ink-secondary">
+                    <CornerDownRight size={14} className="mt-1 shrink-0 text-ink-muted" />
                     <span>
-                      <span className="text-muted">重新考虑的条件：</span>
+                      <span className="text-ink-muted">重新考虑的条件：</span>
                       {item.whenToReconsider}
                     </span>
                   </p>
@@ -150,19 +155,19 @@ export function MvpScopingResultView({
             </div>
           </div>
 
-          <div className="rounded-[16px] border border-subtle bg-muted-bg/50 p-6">
-            <h3 className="flex items-center gap-2 text-base font-semibold text-strong">
-              <Ban size={17} className="text-muted" />
-              当前方向明确不做
-            </h3>
-            <div className="mt-4 space-y-3">
+          <div className="rounded-[16px] border border-border bg-surface-secondary/50 p-6">
+            <p className="label-editorial">Never · 当前方向明确不做</p>
+            <div className="mt-4 space-y-3 reveal-group">
               {result.explicitlyOutOfScope.map((item) => (
                 <div
                   key={item.name}
-                  className="rounded-[12px] border border-subtle bg-surface px-4 py-3"
+                  className="reveal-item rounded-[12px] border border-border bg-surface px-4 py-3"
                 >
-                  <p className="text-sm font-medium text-strong">{item.name}</p>
-                  <p className="mt-1 text-sm leading-6 text-body">
+                  <p className="flex items-center gap-2 text-sm font-medium text-ink">
+                    <Ban size={14} className="shrink-0 text-ink-muted" />
+                    {item.name}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-ink-secondary">
                     {item.reason}
                   </p>
                 </div>
@@ -173,11 +178,8 @@ export function MvpScopingResultView({
       </section>
 
       {/* MVP 核心闭环 */}
-      <section className="rounded-[16px] border border-subtle bg-surface p-6">
-        <h3 className="flex items-center gap-2 text-base font-semibold text-strong">
-          <Layers size={17} className="text-accent" />
-          最小完整用户闭环
-        </h3>
+      <section className="rounded-[16px] border border-border bg-surface p-6">
+        <p className="label-editorial">Core Loop · 最小完整用户闭环</p>
         <div className="mt-5 flex flex-wrap items-center gap-x-2.5 gap-y-3">
           {[
             result.coreLoop.entry,
@@ -189,7 +191,7 @@ export function MvpScopingResultView({
             return (
               <span key={`${index}-${label.slice(0, 12)}`} className="flex items-center gap-2.5">
                 {!isStart && (
-                  <ArrowRight size={15} className="shrink-0 text-faint" />
+                  <ArrowRight size={15} className="shrink-0 text-ink-muted" />
                 )}
                 <LoopNode label={label} start={isStart} end={isEnd} />
               </span>
@@ -199,18 +201,15 @@ export function MvpScopingResultView({
       </section>
 
       {/* 范围约束 */}
-      <section className="rounded-[16px] border border-subtle bg-surface p-6">
-        <h3 className="text-base font-semibold text-strong">范围约束</h3>
+      <section className="rounded-[16px] border border-border bg-surface p-6">
+        <p className="label-editorial">Constraints · 范围约束</p>
         <BulletList items={result.scopeConstraints} />
       </section>
 
       {/* MVP 风险与验证 */}
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="rounded-[16px] border border-subtle bg-surface p-6">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-strong">
-            <ShieldAlert size={16} className="text-muted" />
-            MVP 风险
-          </h3>
+        <div className="rounded-[16px] border border-border bg-surface p-6">
+          <p className="label-editorial">Risks · MVP 风险</p>
           <div className="mt-4 space-y-3">
             {result.mvpRisks.map((item) => (
               <div
@@ -219,16 +218,19 @@ export function MvpScopingResultView({
                   "rounded-[12px] border p-4",
                   item.impact === "high"
                     ? "border-warning/30 bg-warning-soft/60"
-                    : "border-subtle bg-muted-bg/40",
+                    : "border-border bg-surface-secondary/50",
                 ].join(" ")}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-strong">{item.risk}</p>
-                  <span className="shrink-0 rounded-[8px] bg-surface px-2 py-0.5 text-[11px] text-muted">
+                  <p className="flex items-center gap-2 text-sm font-medium text-ink">
+                    <ShieldAlert size={14} className="shrink-0 text-ink-muted" />
+                    {item.risk}
+                  </p>
+                  <span className="shrink-0 rounded-[8px] bg-surface px-2 py-0.5 text-[11px] text-ink-muted">
                     {IMPACT_LABEL[item.impact]}
                   </span>
                 </div>
-                <p className="mt-1.5 text-sm leading-6 text-body">
+                <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
                   {item.response}
                 </p>
               </div>
@@ -236,22 +238,20 @@ export function MvpScopingResultView({
           </div>
         </div>
 
-        <div className="rounded-[16px] border border-subtle bg-surface p-6">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-strong">
-            <ClipboardCheck size={16} className="text-muted" />
-            上线后怎么验证
-          </h3>
+        <div className="rounded-[16px] border border-border bg-surface p-6">
+          <p className="label-editorial">Validation Plan · 上线后怎么验证</p>
           <div className="mt-4 space-y-3">
             {result.validationPlan.map((item) => (
               <div
                 key={item.action}
-                className="rounded-[12px] border border-subtle bg-muted-bg/40 p-4"
+                className="rounded-[12px] border border-border bg-surface-secondary/50 p-4"
               >
-                <p className="text-sm font-medium leading-6 text-strong">
+                <p className="flex items-center gap-2 text-sm font-medium leading-6 text-ink">
+                  <ClipboardCheck size={14} className="shrink-0 text-ink-muted" />
                   {item.action}
                 </p>
-                <p className="mt-1.5 text-sm leading-6 text-body">
-                  <span className="text-muted">观察信号：</span>
+                <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
+                  <span className="text-ink-muted">观察信号：</span>
                   {item.signal}
                 </p>
               </div>
@@ -261,18 +261,18 @@ export function MvpScopingResultView({
       </section>
 
       {/* 范围总结：Build / Not Build 对比 */}
-      <section className="rounded-[16px] border border-subtle bg-surface p-6">
-        <h3 className="text-base font-semibold text-strong">范围总结</h3>
+      <section className="rounded-[16px] border border-border bg-surface p-6">
+        <p className="label-editorial">Scope Summary · 范围总结</p>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-[12px] border border-accent/20 bg-accent-soft/40 p-4">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-accent">
+          <div className="rounded-[12px] border border-brand/20 bg-brand-soft/40 p-4">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-brand">
               <CheckCircle2 size={15} />
               现在做
             </p>
             <BulletList items={result.scopeSummary.buildNow} />
           </div>
-          <div className="rounded-[12px] border border-subtle bg-muted-bg/50 p-4">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-muted">
+          <div className="rounded-[12px] border border-border bg-surface-secondary/60 p-4">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-ink-muted">
               <MinusCircle size={15} />
               现在不做
             </p>
@@ -280,28 +280,36 @@ export function MvpScopingResultView({
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-4 border-t border-subtle pt-4">
+        <div className="mt-5 flex items-center justify-between gap-4 border-t border-border pt-4">
           <div>
-            <p className="text-sm font-medium text-strong">准备进入执行方案</p>
-            <p className="mt-0.5 text-xs text-muted">
-              下一阶段开放：将把 MVP 范围展开为可执行的开发安排。
+            <p className="text-sm font-medium text-ink">准备进入执行方案</p>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              将把已冻结的 MVP 范围展开为可以开始开发的安排，不会新增功能。
             </p>
           </div>
           <button
             type="button"
-            disabled
-            aria-disabled="true"
-            title="执行方案将在下一阶段开放"
-            className="inline-flex h-10 shrink-0 cursor-not-allowed items-center gap-2 rounded-[12px] border border-subtle bg-muted-bg px-4 text-sm text-faint"
+            onClick={onStartExecution}
+            disabled={executionStarting}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-[8px] bg-brand px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-70"
           >
-            <Lock size={14} />
-            生成执行方案 · 下一阶段开放
+            {executionStarting ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                正在生成…
+              </>
+            ) : (
+              <>
+                <ArrowRight size={14} />
+                生成执行方案
+              </>
+            )}
           </button>
         </div>
       </section>
 
       {latencyMs !== null && (
-        <p className="text-right font-mono text-xs text-faint">
+        <p className="text-right font-mono text-xs text-ink-muted">
           MVP 收敛耗时 {latencyMs} ms
         </p>
       )}
@@ -312,8 +320,8 @@ export function MvpScopingResultView({
 function DefinitionItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="mt-1.5 text-sm leading-6 text-body">{value}</p>
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1.5 text-sm leading-6 text-ink-secondary">{value}</p>
     </div>
   );
 }
@@ -332,10 +340,10 @@ function LoopNode({
       className={[
         "inline-flex items-center rounded-full border px-3.5 py-1.5 text-[13px]",
         end
-          ? "border-success/30 bg-success-soft font-medium text-success"
+          ? "border-aubergine/30 bg-aubergine-soft font-medium text-aubergine"
           : start
-            ? "border-accent/25 bg-accent-soft font-medium text-accent"
-            : "border-subtle bg-muted-bg/60 text-body",
+            ? "border-brand/25 bg-brand-soft font-medium text-brand"
+            : "border-border bg-surface-secondary/60 text-ink-secondary",
       ].join(" ")}
     >
       {label}
@@ -345,14 +353,14 @@ function LoopNode({
 
 function BulletList({ items }: { items: string[] }) {
   if (items.length === 0) {
-    return <p className="mt-1.5 text-sm text-faint">暂无内容</p>;
+    return <p className="mt-1.5 text-sm text-ink-muted">暂无内容</p>;
   }
   return (
     <ul className="mt-2 space-y-2">
       {items.map((item, index) => (
         <li key={`${index}-${item.slice(0, 12)}`} className="flex gap-2.5">
-          <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-muted" />
-          <span className="text-sm leading-6 text-body">{item}</span>
+          <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ink-muted" />
+          <span className="text-sm leading-6 text-ink-secondary">{item}</span>
         </li>
       ))}
     </ul>
