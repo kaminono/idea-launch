@@ -85,7 +85,7 @@ export function ProductAnalysisResultView({
             {result.productDefinition.stage}
           </span>
         </div>
-        <p className="mt-2 text-[15px] leading-7 text-ink-secondary">
+        <p className="mt-2 text-[15px] leading-7 text-body">
           {result.productDefinition.oneLineDefinition}
         </p>
 
@@ -98,10 +98,10 @@ export function ProductAnalysisResultView({
             <p className="mt-2 text-sm font-medium leading-6 text-ink">
               {result.primaryUser.description}
             </p>
-            <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
+            <p className="mt-1.5 text-sm leading-6 text-body">
               {result.primaryUser.context}
             </p>
-            <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
+            <p className="mt-1.5 text-sm leading-6 text-body">
               <span className="text-ink-muted">主要目标：</span>
               {result.primaryUser.primaryGoal}
             </p>
@@ -112,14 +112,14 @@ export function ProductAnalysisResultView({
               <Route size={14} />
               核心场景
             </p>
-            <p className="mt-2 text-sm leading-6 text-ink-secondary">
+            <p className="mt-2 text-sm leading-6 text-body">
               <span className="text-ink-muted">触发：</span>
               {result.coreScenario.trigger}
             </p>
-            <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
+            <p className="mt-1.5 text-sm leading-6 text-body">
               {result.coreScenario.scenario}
             </p>
-            <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
+            <p className="mt-1.5 text-sm leading-6 text-body">
               <span className="text-ink-muted">期望结果：</span>
               {result.coreScenario.desiredOutcome}
             </p>
@@ -161,7 +161,7 @@ export function ProductAnalysisResultView({
                 className="reveal-item rounded-[12px] border border-border bg-surface p-4"
               >
                 <p className="text-sm font-medium text-ink">{item.alternative}</p>
-                <p className="mt-1.5 text-sm leading-6 text-ink-secondary">
+                <p className="mt-1.5 text-sm leading-6 text-body">
                   {item.whyUsersUseIt}
                 </p>
                 <div className="mt-2.5">
@@ -220,7 +220,7 @@ export function ProductAnalysisResultView({
               <p className="mt-2.5 text-sm font-medium leading-6 text-ink">
                 {item.hypothesis}
               </p>
-              <p className="mt-2 text-sm leading-6 text-ink-secondary">
+              <p className="mt-2 text-sm leading-6 text-body">
                 <span className="text-ink-muted">验证建议：</span>
                 {item.validationIdea}
               </p>
@@ -260,7 +260,7 @@ export function ProductAnalysisResultView({
                   严重程度：{SEVERITY_LABEL[item.severity]}
                 </span>
               </div>
-              <p className="mt-2 text-sm leading-6 text-ink-secondary">{item.reason}</p>
+              <p className="mt-2 text-sm leading-6 text-body">{item.reason}</p>
             </div>
           ))}
         </div>
@@ -338,7 +338,7 @@ function BulletList({
       {items.map((item, index) => (
         <li key={`${index}-${item.slice(0, 12)}`} className="flex gap-2.5">
           <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ink-muted" />
-          <span className="text-sm leading-6 text-ink-secondary">{item}</span>
+          <span className="text-sm leading-6 text-body">{item}</span>
         </li>
       ))}
     </ul>

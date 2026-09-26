@@ -167,7 +167,7 @@ function StringList({
           ) : (
             <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ink-muted" />
           )}
-          <span className="text-sm leading-6 text-ink-secondary">{item}</span>
+          <span className="text-sm leading-6 text-body">{item}</span>
         </li>
       ))}
     </ul>
